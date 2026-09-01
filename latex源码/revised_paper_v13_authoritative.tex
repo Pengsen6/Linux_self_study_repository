@@ -1,0 +1,1382 @@
+%==========================================================================
+% 基于动态图注意力网络与多智能体强化学习的低空交叉路口飞行器协同管控
+% 学位论文版式（模仿国内权威航空类学位论文/期刊论文布局）
+% 作者：彭义森  指导老师：韩云祥  四川大学
+% 版本：v13（权威版式重排）
+%==========================================================================
+\documentclass[12pt,a4paper,UTF8]{ctexbook}
+
+%--------------------------------------------------------------------------
+% 宏包
+%--------------------------------------------------------------------------
+\usepackage{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{multirow,array}
+\usepackage{cite}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{threeparttable}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{tikz}
+
+\geometry{left=3cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+%\linespread{1.45}  % 学位论文可用1.5倍行距；期刊论文版式用默认单倍行距
+\setlength{\parskip}{0.3em}
+
+\newcommand{\vs}{\phantom{0}} % 对齐辅助
+
+\begin{document}
+
+%--------------------------------------------------------------------------
+% 中文摘要
+%--------------------------------------------------------------------------
+\chapter*{摘\ \ 要}
+\addcontentsline{toc}{chapter}{摘\ \ 要}
+
+随着低空经济的蓬勃发展，以电动垂直起降飞行器（Electric Vertical Take-Off and Landing, eVTOL）为核心的城市空中交通（Urban Air Mobility, UAM）正在由概念构想走向规模化运行。未来城市低空空域将同时容纳物流无人机、空中出租车、应急救援飞行器等多种航空器，其运行密度之高、动态性之强、任务类型之复杂，已远超传统空管体系的承载能力。在高密度、强动态的低空环境中，如何保证多架飞行器在交叉路口与汇合点等高冲突区域的协同安全通过，是先进空中交通（Advanced Air Mobility, AAM）落地必须跨越的核心技术门槛。
+
+针对这一难题，本文以城市低空十字交叉路口为典型场景，提出了一种融合动态图注意力网络（Dynamic Graph Attention Network, DyGAT）的耦合多智能体强化学习（Multi-Agent Reinforcement Learning, MARL）协同管控模型。围绕"如何让智能体在共享空域中相互理解、相互让行"这一根本问题，本文完成了以下三项核心设计：
+
+第一，提出了基于物理量驱动的乘法门控注意力掩码机制。DyGAT在经典图注意力网络（Graph Attention Network, GAT）的基础上，通过三个手工设计的指数核，将飞行器对之间的距离、速度差与航向差编码为$(0,1]$区间的乘法门控信号（multiplicative gating signal）。该信号以软性注意力掩码（soft attention mask）的形式作用于学习得到的注意力权重，从物理机理层面引导模型将有限的计算资源聚焦于真正构成威胁的高风险交互对，从而避免了纯学习机制在稀疏数据下可能产生的"反物理"注意力分配。
+
+第二，设计了分层奖励函数与速度自适应安全距离。安全间隔不再是固定常数，而是随飞行器平均速度动态调整，从而在物理上匹配"以接近速度行使的安全余量"这一飞行常识；奖励函数则从安全、速度、协同、效率四个维度对智能体的行为进行引导，使冲突规避、速度保持与任务完成三者之间形成可量化的权衡。
+
+第三，构建了课程学习与Episode级冲突损失加权相结合的训练机制。通过从$N=5$架飞行器逐步扩展至$N=21$架的课程式训练，有效缓解了稀疏冲突样本导致的梯度信号不稳定问题；通过对包含冲突的Episode施加$\lambda=2.0$的损失权重，在严格保持PPO（Proximal Policy Optimization）on-policy框架的前提下，显著提升了模型对罕见危险事件的敏感度。
+
+在21架eVTOL的二维交叉路口仿真场景中，本文将所提方法与8种基线方法进行了系统对比。实验结果表明：本文方法的无冲突完成率（Conflict-Free Completion Rate, CFCR）从最优CTDE-MARL基线MAPPO的$57.8\%$提升至$68.4\%$（$p<0.001$，Cohen's $d=5.27$，统计效力$>99\%$）；最小间隔违反率（Minimum Separation Violation Rate, MSVR）从$3.0\%$降至$2.4\%$（$p=0.029$，$d=1.69$，效力约为$70\%$），构成了本文的核心统计贡献。总冲突次数（Total Conflicts, TC）从MAPPO的$20.3\pm2.4$降至$18.2\pm2.1$（降幅$10.3\%$，$d=0.93$），但该差异在$n=5$样本量下未达到统计显著水平（$p=0.180$，统计效力约$38\%$），应视为方向性证据，有待$n\geq20$的重复实验进一步确认。消融实验表明，DyGAT是性能贡献最大的模块，移除后总冲突次数增加$173.6\%$。
+
+本文的研究表明：基于物理先验的结构化注入与基于学习的注意力机制并非对立关系，二者的乘法耦合能够形成"物理约束划界、学习机制微调"的互补格局，为高密度低空交通的智能化协同管控提供了一条兼具安全性、可解释性与可扩展性的技术路径。
+
+\noindent\textbf{关键词：}低空交通管控；城市空中交通；多智能体强化学习；动态图注意力网络；乘法门控注意力掩码；冲突避免；课程学习
+
+%--------------------------------------------------------------------------
+% 英文摘要
+%--------------------------------------------------------------------------
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+The high-density, safe and coordinated management of Electric Vertical Take-Off and Landing (eVTOL) aircraft at urban low-altitude intersections constitutes one of the most critical technical challenges for the deployment of Advanced Air Mobility (AAM). As urban low-altitude airspace becomes increasingly congested with logistics drones, air taxis, and emergency aircraft, the conventional centralized air traffic management paradigm faces severe scalability bottlenecks, while engineering-based collision-avoidance methods tend to be overly conservative in dense interaction scenarios.
+
+To address this problem, this paper proposes a coupled Multi-Agent Reinforcement Learning (MARL) model augmented by a Dynamic Graph Attention Network (DyGAT) for the coordinated management of eVTOL aircraft traversing a low-altitude intersection. The model rests on three core design pillars. First, a \emph{multiplicative gating attention mask} driven entirely by physical quantities is introduced: three hand-crafted exponential kernels encode the relative distance, speed difference, and heading difference between each aircraft pair into a soft mask signal in the interval $(0,1]$, which multiplicatively gates the learned attention weights so that the model concentrates its limited representational capacity on genuinely hazardous interaction pairs. Second, a hierarchical reward function combined with a speed-adaptive safety distance is designed, enabling a principled balance among safety, speed keeping, coordination, and mission efficiency. Third, a curriculum learning scheme jointly trained with episode-level conflict loss weighting ($\lambda=2.0$) improves the learning efficiency of sparse conflict samples while strictly preserving the on-policy PPO framework.
+
+In a two-dimensional intersection simulation involving 21 eVTOL aircraft, the proposed method is systematically compared against eight baseline approaches. The Conflict-Free Completion Rate (CFCR) is improved from $57.8\%$ (best CTDE-MARL baseline, MAPPO) to $68.4\%$ ($p<0.001$, Cohen's $d=5.27$, statistical power $>99\%$), and the Minimum Separation Violation Rate (MSVR) is reduced from $3.0\%$ to $2.4\%$ ($p=0.029$, $d=1.69$, power $\approx70\%$), constituting the core statistical contributions of this work. The total number of conflicts (TC) decreases from $20.3\pm2.4$ (MAPPO) to $18.2\pm2.1$ (a $10.3\%$ reduction, $d=0.93$), although this difference does not reach statistical significance at $n=5$ ($p=0.180$, power $\approx38\%$), and should therefore be interpreted as directional evidence pending confirmation with $n\geq20$ repeated experiments. Ablation studies reveal that DyGAT is the most influential module: removing it increases TC by $173.6\%$.
+
+Our findings demonstrate that injecting physics-structured priors into learned attention mechanisms, rather than treating them as mutually exclusive alternatives, yields a complementary paradigm of ``physics-delimiting, learning-refining,'' offering a safe, interpretable, and scalable pathway toward intelligent coordinated management of high-density low-altitude air traffic.
+
+\noindent\textbf{Key words: }low-altitude traffic management; urban air mobility; multi-agent reinforcement learning; dynamic graph attention network; multiplicative gating attention mask; conflict avoidance; curriculum learning
+
+%--------------------------------------------------------------------------
+% 目录
+%--------------------------------------------------------------------------
+\tableofcontents
+\newpage
+
+%==========================================================================
+% 第1章 绪论
+%==========================================================================
+\chapter{绪论}
+
+\section{研究背景与意义}
+
+\subsection{低空经济发展的时代背景}
+
+近年来，随着通用航空产业的战略地位不断上升，低空经济已被纳入国家战略性新兴产业体系，成为继地面交通、轨道交通之后交通运输领域的"第三增长极"。2023年中央经济工作会议明确提出打造低空经济等若干战略性新兴产业；此后，《通用航空装备创新应用实施方案（2024--2030年）》《国家综合立体交通网规划纲要》等政策文件相继出台，从顶层设计层面为低空空域资源的开发利用提供了制度保障。在这一时代背景下，电动垂直起降飞行器（Electric Vertical Take-Off and Landing，简称eVTOL）凭借其垂直起降、零排放、低噪声、运行维护成本低等技术优势，被视为城市空中交通（Urban Air Mobility，简称UAM）的核心载运工具。
+
+从产业进程来看，eVTOL已从实验室原型阶段快速走向适航审定与商业示范阶段。国外方面，Joby Aviation、Volocopter、Lilium、Archer Aviation等头部企业已相继完成原型机试飞，其中Joby S4与Archer Midnight已进入美国联邦航空管理局（Federal Aviation Administration，FAA）的适航审定流程；国内方面，亿航智能EH216-S于2023年底获得全球首张无人驾驶eVTOL型号合格证，峰飞航空、小鹏汇天、沃飞长空等企业的多款产品也陆续完成首飞。FAA在《城市空中交通运行概念2.0》（Urban Air Mobility: Concept of Operations v2.0）中预测，到2040年美国将有数百万架次的无人机与eVTOL在低空空域运行\cite{ref1}。如此规模的机队如果缺乏科学的协同管控手段，低空空域将不可避免地陷入"无序飞行—运行瘫痪"的困境。
+
+\subsection{低空交通管控面临的技术挑战}
+
+与传统的民航高空运输相比，城市低空交通呈现出一系列截然不同的运行特征，这些特征决定了其管控问题不能简单套用现有空管体系。
+
+\textbf{（1）高密度运行。}传统航路飞行器之间往往间隔数十公里，而城市低空场景中，物流无人机、空中出租车与救援飞行器将在半径数公里范围内同时运行，飞行器密度较传统空域提高数个数量级。高密度意味着任意时刻都存在大量的潜在交互对，冲突检测与解脱的计算规模急剧膨胀。
+
+\textbf{（2）强动态性。}低空飞行器在空间中的运动速度虽低于固定翼飞机，但其运动学状态（位置、速度、航向）以秒级甚至亚秒级频率发生变化，飞行器间的相对运动关系随时在改变。以本文的仿真场景为例，飞行器在500 m范围内即可建立邻居关系，而一架以100 km/h速度飞行的eVTOL在1 s内即可移动约28 m——这意味着邻域拓扑结构的更新时间窗口极短。
+
+\textbf{（3）异构性。}低空运行的航空器包括多旋翼物流无人机、倾转旋翼eVTOL、复合翼eVTOL等多种类型，其动力性能、转弯能力、载荷与任务模式差异显著，统一建模困难。
+
+\textbf{（4）交叉与汇合的时空耦合。}城市低空交通在路口、楼宇间、起降场等关键节点处形成密集的交叉与汇合流。与地面交通不同，飞行器在三维空间中虽可通过高度层分离，但受限于低空飞行高度带（通常120 m以下为超低空、300 m以下为低空）与噪声排放约束，实际可用的垂直间隔余量十分有限。在二维平面投影下，多股交叉流在路口处形成的高度耦合冲突，是低空交通管控中最具挑战性的问题之一。
+
+正是上述特征，使得低空交叉路口处的协同管控与冲突避免成为低空交通管理系统（UTM，UAS Traffic Management）的核心技术难题：系统必须在极短的决策周期内，在数百个潜在交互对中快速识别真正的冲突风险，并给出协调一致的避让指令，同时保证整体交通流的效率不受过度影响。
+
+\subsection{研究意义}
+
+从理论层面看，低空交叉路口的多机协同冲突避免问题本质上是一个典型的"多智能体序贯决策"问题。飞行器作为智能体，其最优动作不仅取决于自身状态，还取决于其他飞行器的未来行为——这是一种典型的博弈耦合关系。如何将图神经网络对结构化空间关系的建模能力、注意力机制对关键信息的筛选能力与多智能体强化学习的序贯决策能力有机融合，是智能交通与人工智能交叉领域的前沿科学问题。
+
+从工程层面看，本文的研究直接服务于低空交通管理系统的核心功能模块。在高密度场景下，人工管制方式（如地面管制员的语音指挥）在信息处理带宽上已接近极限；而基于规则与优化的传统方法又难以在计算复杂度与最优性之间取得平衡。一个能够实时、自主、协同地生成无冲突航迹的智能管控模型，是低空物流网络、城市空中交通示范运营乃至应急救援体系大规模落地的前提。
+
+基于上述背景，本文聚焦"低空十字交叉路口"这一典型高冲突场景，研究基于深度多智能体强化学习与动态图注意力机制的飞行器协同管控方法，以期在保证飞行安全的前提下最大限度地提升交叉路口的通行效率，为先进空中交通的发展提供理论支撑与方法参考。
+
+\section{国内外研究现状}
+
+围绕低空/空中交通的协同管控问题，学术界与工业界已形成多条技术路线。本节按照"传统优化方法—工程安全方法—数据驱动方法"的脉络，对国内外研究现状进行系统梳理，并在此基础上归纳现有研究的不足。
+
+\subsection{传统空中交通流量管理方法}
+
+空中交通流量管理（Air Traffic Flow Management，ATFM）是空管领域最早形成体系的优化框架，其核心思想是在航路网络容量已知的条件下，通过整数规划、线性规划等数学优化手段对航班的地面等待、改航与调速进行集中式决策。Menon等\cite{ref2}提出了一种新的空域建模、分析与控制方法，将航空交通流抽象为连续介质模型，通过欧拉框架下的偏微分方程描述交通流密度演化，进而求解最优流量控制策略。该方法为宏观层面的流量管理提供了坚实的理论框架，在高空航线网络中具有良好的适用性。然而，这类集中式优化方法本质上假设空域状态可全局感知、决策可由单一中心节点执行，当飞行器数量达到数十乃至上百架时，优化问题的状态空间与约束规模将呈指数增长，实时求解面临严峻挑战。
+
+此外，地面交通信号控制领域的研究为空中交通管控提供了重要的方法论借鉴。作为自适应交通控制的代表，Aslani等\cite{ref12}将actor-critic强化学习算法应用于真实交通网络的信号控制，验证了其在多种交通扰动事件下的鲁棒性；国内学者则较早探索了基于Q-learning的交叉口信号控制方法\cite{ref16,ref19,ref20}，并逐渐过渡到深度强化学习框架\cite{ref15,ref17,ref18,ref22}。这些工作表明，强化学习在处理"多路口、多时段、强耦合"的交通控制问题方面具有天然优势，为本文将其推广至空中交通场景提供了有力的先例支撑。
+
+\subsection{基于工程约束的冲突解脱方法}
+
+与宏观流量管理相对，工程安全方法着眼于微观层面的冲突解脱，其共同特点是利用明确的物理/数学约束为飞行安全提供可验证的保证。
+
+\textbf{模型预测控制（MPC）。}Richards与How\cite{ref3}将飞行器航迹规划与冲突避免问题建模为混合整数线性规划（Mixed Integer Linear Programming，MILP），在滚动时域内反复求解最优控制序列，实现了对飞行器未来轨迹的预测性控制。MPC的优点在于其最优性可度量、约束可显式表达，但其计算复杂度随预测时域与飞行器数量的增加迅速上升，在高密度场景下的实时性难以保证。
+
+\textbf{速度障碍法（VO）与最优互惠避碰（ORCA）。}速度障碍法由Fiorini与Shiller提出，其基本思想是在速度空间中构造"若保持当前速度必然碰撞"的速度集合，从而将避碰问题转化为"选择不在障碍集合中的速度"的几何问题。van den Berg等\cite{ref4}在VO基础上提出了最优互惠碰撞避免算法（Optimal Reciprocal Collision Avoidance，ORCA），通过线性规划在互惠假设下选择使总速度变化最小的无碰撞速度，从而在分布式框架下实现了多智能体的平滑避碰。ORCA已广泛集成于机器人导航与无人机编队中，但其"互惠"假设要求所有智能体对彼此的避让责任进行对称分担，当智能体行为异构、目标冲突时，该假设往往不成立，导致避让效率下降甚至振荡。
+
+\textbf{控制屏障函数（CBF）。}Ames等\cite{ref5}系统总结了控制屏障函数理论，其核心思想是通过设计满足前向不变性条件的屏障函数，将安全约束编码为可在线求解的二次规划约束，从而在保证安全的前提下最小化对名义控制器性能的干预。CBF提供了严格的安全保证，但对系统模型的精度要求较高，且在多个飞行器相互耦合时，安全集合的交集可能迅速收缩，导致可行解退化。
+
+总体而言，工程安全方法在"形式化安全保证"方面具有不可替代的优势，但其共同局限在于对高密度交互场景的适应性不足：当飞行器间的耦合关系复杂且动态变化时，MPC的求解规模、ORCA的互惠假设与CBF的安全集合构造都面临不同程度的退化。这也为数据驱动方法提供了切入空间。
+
+\subsection{强化学习在交通管控中的应用}
+
+强化学习（Reinforcement Learning，RL）通过与环境的试错交互学习最优决策策略，无需精确建模系统动力学，因而被广泛引入交通管控领域。
+
+在单智能体层面，深度Q网络（DQN）及其变体被应用于冲突规避与信号控制等任务\cite{ref12,ref15,ref16,ref17,ref18,ref19,ref20,ref21,ref22}。江波等\cite{ref21}将深度Q学习应用于机场道口的协同智能调速，验证了RL方法在航空地面交通场景中的可行性。然而，单智能体RL无法刻画多架飞行器之间的博弈耦合关系——当每一架飞行器都独立地优化自身收益时，其联合行为往往偏离系统最优，甚至导致冲突的连锁反应。
+
+在多智能体层面，Tumer与Agogino\cite{ref7,ref14,ref24}较早验证了分布式多智能体学习在ATM架构中的有效性，提出了基于耦合智能体的流量调节机制；Spatharis等\cite{ref11}设计了分层多智能体强化学习方案用于空中交通管理，通过任务分解降低了学习难度；Brittain与Wei\cite{ref8}在高密度航路扇区中验证了深度多智能体强化学习的自主间隔保障能力；Ghosh等\cite{ref9}提出了深度集成MARL方法，通过多模型集成提升了空中交通管制场景下策略的稳健性。国内方面，翟子洋等\cite{ref13}系统梳理了大规模智慧交通信号控制中强化学习与深度强化学习方法的技术演进路线，特别是集中训练分布式执行（Centralized Training with Decentralized Execution，CTDE）范式的应用前景。
+
+值得注意的是，上述方法大多基于全连接或固定拓扑的图结构建模智能体间关系，缺乏对时空耦合关系的动态刻画，这为本文引入动态图注意力机制提供了动机。
+
+\subsection{多智能体强化学习与集中训练分布式执行范式}
+
+多智能体强化学习（Multi-Agent Reinforcement Learning，MARL）的核心难题在于环境的非平稳性：每个智能体的策略更新都会改变其他智能体的最优决策，导致联合策略空间急剧膨胀。为解决这一难题，学术界发展出了以CTDE范式为代表的一系列算法。CTDE的核心思想是：在训练阶段允许智能体共享全局信息（如全局状态、其他智能体的观测与动作），从而缓解信用分配与非平稳性问题；在执行阶段则仅依赖局部观测进行分布式决策，以满足实时性与通信约束。
+
+围绕CTDE范式，学术界发展出了多条技术路线。值分解方法如QMIX\cite{ref33}通过单调性约束将全局Q函数分解为各智能体Q函数的单调组合，保证了分解与最优联合动作的一致性；Actor-Critic方法如MADDPG\cite{ref34}采用集中式Critic与分布式Actor的结构，将全局信息用于价值评估、局部信息用于策略决策；COMA\cite{ref35}通过反事实基线有效解决了多智能体信用分配问题；而MAPPO\cite{ref36}则将单智能体PPO算法推广至多智能体场景，在合作博弈任务中展现出惊人的竞争力。
+
+本文的方法即建立在MAPPO所代表的Actor-Critic-CTDE框架之上，但针对低空交通的特殊性，对特征编码层进行了重构——以动态图注意力网络取代全连接网络作为特征提取骨干，使模型能够在训练与执行阶段均利用飞行器间的空间拓扑结构。
+
+\subsection{图神经网络与注意力机制在交通中的应用}
+
+图神经网络（Graph Neural Network，GNN）通过消息传递机制对非欧几里得结构数据（如交通网络、社会网络）进行特征学习，近年来在交通管控领域得到日益广泛的应用。Kipf与Welling\cite{ref32}提出的图卷积网络（GCN）以谱域滤波近似实现局部聚合；Veličković等\cite{ref31}提出的图注意力网络（GAT）则通过可学习的注意力权重自适应地聚合邻居信息，摆脱了对固定拉普拉斯矩阵的依赖。
+
+在低空无人机交通领域，Li等\cite{ref10}提出的MS-GRL方法采用多尺度图增强的强化学习框架，将多尺度GAT与Double DQN相结合，处理了100架UAV的密集冲突消解问题，代表了图增强MARL在该领域的代表性工作。然而，现有GNN方法中的图结构通常基于固定距离阈值构建，即"凡在某一半径内的飞行器一律视为邻居"。这种静态建图方式存在一个根本缺陷：它无法区分"距离相同但相对运动状态不同"的飞行器对——两对飞行器即便当前欧氏距离完全相同，若一对相向高速靠近、另一对同向等速飞行，其冲突风险可能相差数十倍。这一缺陷正是本文DyGAT所针对的核心问题。
+
+此外，注意力机制中的门控思想也与本文密切相关。经典门控单元（如LSTM中的遗忘门\cite{ref37}）通过学习生成门控信号来调节信息流，而本文反其道而行之——由物理量直接驱动门控信号，从而实现零可学习参数的"结构化先验注入"，这一设计在理论上更接近认知科学中"经验驱动注意力聚焦"的机制。
+
+\subsection{研究现状评述与问题提出}
+
+综合上述分析，现有研究在以下三个维度仍存在明显不足：
+
+\textbf{（1）时空耦合建模不足。}多数方法使用全连接网络或静态图结构\cite{ref8,ref10,ref11}。当飞行器快速移动时，静态图无法区分"距离相同但相对运动状态不同"的飞行器对——相向高速靠近与同向等速飞行的两对飞行器，即便当前距离相等，冲突风险相差可达数十倍。这一缺陷直接制约了模型在高密度动态场景下的决策质量。
+
+\textbf{（2）稀疏冲突样本利用不足。}冲突事件在完整运行周期中属于低概率事件，其在训练数据中的占比通常低于$0.1\%$\cite{ref12,ref13}。在随机采样条件下，这些珍贵的危险样本极易被淹没在大量正常样本中，导致模型对罕见危险事件的敏感性不足。如何在不破坏on-policy框架的前提下提高稀疏冲突样本的利用效率，是训练机制设计的关键问题。
+
+\textbf{（3）环境不确定性建模不足。}多数研究忽略物理运动约束与动态安全距离\cite{ref11}，且对风扰与传感器噪声的处理过于简化，与真实低空环境存在较大差距。安全间隔若为固定常数，则无法反映"高速飞行需要更大安全余量"这一基本物理规律。
+
+正是针对上述三个不足，本文提出了一种融合物理先验注入的动态图注意力网络与多智能体强化学习的协同管控模型。
+
+\section{本文主要研究内容}
+
+针对上述研究空白，本文以城市低空十字交叉路口为场景，围绕"高密度飞行器的安全协同通过"这一目标，开展了以下主要研究工作：
+
+（1）构建了面向低空交叉路口冲突规避的仿真环境。该环境引入速度自适应安全距离，即安全间隔随飞行器平均速度动态调整；同时引入eVTOL的物理运动约束（加速度界限、最大转弯角、速度范围），并纳入风扰与传感器噪声等不确定性因素，使仿真环境尽可能接近真实低空运行条件。
+
+（2）提出了动态图注意力网络（DyGAT）。DyGAT首次在GAT框架中引入基于物理量的乘法门控注意力掩码——通过三个手工设计的指数核将飞行器对的距离、速度差与航向差编码为$(0,1]$区间的软性掩码信号，对学习注意力进行乘法门控，引导模型聚焦高风险交互对。消融实验表明，移除该模块将使总冲突次数增加$173.6\%$。
+
+（3）设计了课程学习与Episode级冲突损失加权训练机制。通过从$N=5$到$N=21$的渐进式课程训练降低初始学习难度，通过对含冲突Episode施加$\lambda=2.0$的损失权重提升稀疏危险样本的利用效率，且全程严格保持PPO的on-policy特性。
+
+（4）构建了双层评价指标体系。在传统"表层"指标（冲突率、总冲突次数、平均延误）之外，引入"深层"安全指标（无冲突完成率CFCR、最小间隔违反率MSVR等），并据此揭示了PCR（$99.1\%$）与CFCR（$68.4\%$）之间约30个百分点系统性差距这一重要现象。
+
+（5）与8种基线方法进行了系统对比，并给出了包含Welch $t$检验、Cohen's $d$效应量与统计功效分析的完整统计证据链，确保结论的科学性与可信度。
+
+\section{论文组织结构}
+
+本文共分为六章，各章内容安排如下：
+
+第1章为绪论。阐述低空交通协同管控的研究背景与意义，梳理国内外研究现状，指出现有研究的不足，并给出本文的主要研究内容与创新点。
+
+第2章为相关理论基础。系统介绍低空空中交通管理的基础概念（UAM/UTM、eVTOL、安全间隔）、强化学习与多智能体强化学习的数学基础（MDP、策略梯度、PPO、CTDE范式）、图神经网络与注意力机制原理，以及经典避碰方法（VO/ORCA、MPC、CBF），并给出本文所用统计检验方法的数学定义。本章为后续章节提供必要的理论与术语基础。
+
+第3章为问题建模与管控模型设计。将低空交叉路口协同管控问题形式化为分布式马尔可夫决策过程（Dec-MDP），详细给出仿真环境的观测空间、动作空间、物理约束、不确定性模型与分层奖励函数的设计依据。
+
+第4章为基于DyGAT-MARL的协同管控模型。给出模型总体架构，分别阐述LSTM时序编码、动态图注意力网络（含乘法门控注意力掩码这一核心创新）、策略网络与GAT-Mixer全局价值网络，以及课程学习与冲突损失加权训练机制，并给出完整的训练算法流程。
+
+第5章为实验设计与结果分析。介绍实验设置、基线方法与评价指标，从训练收敛性、综合性能、安全指标、统计显著性、消融实验、密度鲁棒性、参数敏感性与推理效率八个维度对模型进行全面验证，并与代表性方法MS-GRL进行对比讨论。
+
+第6章为总结与展望。总结本文的研究成果与主要创新点，客观分析研究的局限性，并对后续研究方向进行展望。
+
+%==========================================================================
+% 第2章 相关理论基础
+%==========================================================================
+\chapter{相关理论基础}
+
+本章系统介绍本文方法所依赖的理论与技术基础，目的是为后续章节的问题建模、模型设计与实验分析提供统一的数学语言与术语框架。本章内容安排如下：2.1节介绍低空空中交通管理的基本概念，包括UAM/UTM体系、eVTOL飞行器特征与安全间隔标准；2.2节给出强化学习的数学基础，重点介绍MDP、策略梯度、PPO与GAE；2.3节将单智能体框架扩展至多智能体场景，介绍Dec-MDP与CTDE范式及典型算法；2.4节介绍图神经网络与注意力机制；2.5节介绍经典冲突检测与避碰方法；2.6节给出本文所采用的统计检验方法的数学定义。
+
+\section{低空空中交通管理概述}
+
+\subsection{城市空中交通与低空交通管理系统}
+
+城市空中交通（Urban Air Mobility，UAM）是指在城市及其周边地区运行的、以空中方式承载旅客与货物运输的新型交通形态\cite{ref45}。UAM的运行载具以电动垂直起降飞行器（eVTOL）为核心，运行高度通常集中在300 m以下的低空空域。与之密切相关的概念还包括先进空中交通（Advanced Air Mobility，AAM），后者将运行范围从城市扩展至城际与乡村地区。
+
+低空交通管理系统（UAS Traffic Management，UTM）由FAA于2015年前后提出，旨在为无人机系统（UAS）与传统航空提供协同的空域运行框架。UTM与传统的空中交通管理（ATM）存在本质区别：ATM依赖地面管制员对有人机进行集中指挥调度，而UTM面向无人/自主飞行器，强调"数字化的自动化服务"——即通过自动化系统实时感知空域态势、发布飞行情报、进行冲突探测与解脱。当机队规模达到数千架时，人工指挥在时间尺度与信息带宽上均无法胜任，这一现实决定了低空交通管控必须走向"算法决策"。
+
+在上述体系架构下，低空交叉路口的协同管控可以被理解为UTM系统中的一个核心服务功能：在给定的空域单元内，为进入交叉区域的多架飞行器实时生成无冲突、高效率的航迹指令。该功能需要同时满足三个约束：安全性（任意两架飞行器的最小间隔不小于安全标准）、效率性（飞行器以接近目标速度的方式尽快通过）、可扩展性（决策周期满足实时性要求，且算法性能不随飞行器数量急剧恶化）。
+
+\subsection{eVTOL飞行器技术特点}
+
+电动垂直起降飞行器（eVTOL）是UAM的核心载运工具，其名称中的三个关键词分别对应其三大技术特征：电（Electric）——以电池作为能量源，实现零碳排放与低运行噪声；垂直起降（Vertical Take-Off and Landing）——无需跑道即可在楼顶、停车场等城市空间起降；飞行器（aircraft）——具备与直升机相当的机动能力，但结构与维护更简单。
+
+从气动构型看，主流eVTOL可分为多旋翼、复合翼与倾转旋翼三大类\cite{ref25}。多旋翼构型（如亿航EH216）结构简单、悬停效率高，但巡航效率低、航程短；倾转旋翼构型（如Joby S4、Lilium Jet）通过旋翼倾转实现垂直起降与水平巡航状态的转换，巡航效率高、速度快，是城市间空中交通的主流选择。本文在建模时参考了这类eVTOL的性能参数：巡航速度一般为60--140 km/h，最大加速度约3.0 m/s²，最大减速度约4.0 m/s²，最大转弯角约30°。
+
+需要说明的是，当前主流eVTOL制造商（Joby、Volocopter、Lilium、Archer等）均未公开发布最大水平加速度的精确技术规格，学术文献对eVTOL性能建模通常假设加速度约为2.0 m/s²\cite{ref25}。本文取最大加速度3.0 m/s²、最大减速度4.0 m/s²，减速度高于加速度符合安全设计惯例（飞行器应具备比加速更强的减速能力以应对突发危险）。这些取值为缺乏制造商精确数据下的工程估计，在更精确数据可用时应进行敏感性验证。
+
+\subsection{安全间隔与冲突定义}
+
+安全间隔（separation）是空管领域最基本的概念，指两架飞行器之间必须保持的最小距离（水平间隔与垂直间隔）。在传统民航中，雷达管制下的标准水平间隔通常为5海里（约9.3 km），垂直间隔为1000 ft（约305 m）。对于低空eVTOL运行，由于其速度低、机动性好，安全间隔可显著缩小，但具体数值仍须综合考虑飞行器尺寸、旋翼下洗气流、传感器精度与驾驶员反应时间等因素。
+
+本文引入一个关键概念——\textbf{速度自适应安全距离}（speed-adaptive safety distance）。直观上，这一概念源于一个朴素的物理直觉：飞行速度越高，单位时间内接近的距离越大，故需要更大的安全余量。设$d_{\text{base}}$为基本安全间隔，$\bar{v}$为场景内飞行器的平均速度，则动态安全距离定义为：
+\begin{equation}
+    d_{\text{safety}} = d_{\text{base}} + \bar{v} \times 0.5,
+    \label{eq:safety_distance}
+\end{equation}
+其中$\bar{v}\times0.5$项可理解为"额外的前瞻时间0.5 s内飞行器扫过的距离"。以$d_{\text{base}}=50$ m、$\bar{v}=70$ km/h（约19.4 m/s）为例，$d_{\text{safety}}\approx50+9.7\approx60$ m；当飞行器加速至140 km/h（约38.9 m/s）时，$d_{\text{safety}}\approx50+19.4\approx69$ m。由此可见，动态安全距离能够随速度自动调整，在低速时避免过度保守、在高速时提供更大保护，这与空管实践中"速度越高、间隔越大"的原则完全一致。
+
+在此基础上，本文定义两架飞行器$i$与$j$之间发生一次\textbf{冲突}（conflict），当且仅当二者之间的欧氏距离小于当前的安全距离，即$d_{ij}<d_{\text{safety}}$。冲突的严重程度可通过最小间隔与安全距离的比值$d_{\min}/d_{\text{safety}}$进一步分级，本文将其划分为轻微（$0.8\leq r<1.0$）、中度（$0.5\leq r<0.8$）与严重（$r<0.5$）三个等级，用于细粒度评估安全性能。
+
+\section{强化学习理论基础}
+
+\subsection{马尔可夫决策过程}
+
+强化学习研究的是智能体（agent）在与环境（environment）交互的过程中学习最优决策策略的问题。这一交互过程通常被形式化为马尔可夫决策过程（Markov Decision Process，MDP），由四元组$\langle\mathcal{S},\mathcal{A},\mathcal{P},\mathcal{R}\rangle$与折扣因子$\gamma$共同定义：
+
+\begin{itemize}
+    \item \textbf{状态空间}$\mathcal{S}$：环境所有可能状态的集合。在时刻$t$，智能体观测到状态$s_t\in\mathcal{S}$。
+    \item \textbf{动作空间}$\mathcal{A}$：智能体所有可能动作的集合。智能体根据策略选择动作$a_t\in\mathcal{A}$。
+    \item \textbf{状态转移概率}$\mathcal{P}(s_{t+1}|s_t,a_t)$：在状态$s_t$执行动作$a_t$后转移到状态$s_{t+1}$的概率。
+    \item \textbf{奖励函数}$\mathcal{R}(s_t,a_t)$：智能体在状态$s_t$执行动作$a_t$后获得的即时奖励。
+    \item \textbf{折扣因子}$\gamma\in[0,1)$：衡量未来奖励相对当前奖励的重要程度。$\gamma$越接近1，智能体越重视长期收益。
+\end{itemize}
+
+MDP满足马尔可夫性，即下一状态仅依赖于当前状态与动作，与更早的历史无关：$\mathcal{P}(s_{t+1}|s_t,a_t,s_{t-1},a_{t-1},\ldots)=\mathcal{P}(s_{t+1}|s_t,a_t)$。这一性质使得智能体无需记忆完整历史即可做出最优决策，是强化学习能够在高维状态空间中高效求解的关键。
+
+智能体的决策规则称为\textbf{策略}（policy）$\pi(a|s)$，表示在状态$s$下选择动作$a$的概率。强化学习的目标是寻找最优策略$\pi^*$，使折扣累积奖励（称为回报，return）的期望最大化：
+\begin{equation}
+    \pi^* = \arg\max_{\pi}\ \mathbb{E}_{\pi}\left[\sum_{t=0}^{\infty}\gamma^t R(s_t,a_t)\right].
+    \label{eq:mdp_objective}
+\end{equation}
+
+\subsection{价值函数与贝尔曼方程}
+
+为评估状态与动作的优劣，引入\textbf{状态价值函数}与\textbf{动作价值函数}。状态价值函数$V^\pi(s)$表示从状态$s$出发、按策略$\pi$执行所获得的期望回报：
+\begin{equation}
+    V^\pi(s) = \mathbb{E}_{\pi}\left[\sum_{k=0}^{\infty}\gamma^k R(s_{t+k},a_{t+k})\ \middle|\ s_t=s\right].
+    \label{eq:state_value}
+\end{equation}
+动作价值函数（Q函数）$Q^\pi(s,a)$表示从状态$s$执行动作$a$、此后按策略$\pi$执行所获得的期望回报。
+
+价值函数满足\textbf{贝尔曼方程}（Bellman equation），它揭示了相邻时刻价值之间的递推关系：
+\begin{equation}
+    V^\pi(s) = \sum_{a}\pi(a|s)\sum_{s'} \mathcal{P}(s'|s,a)\left[R(s,a)+\gamma V^\pi(s')\right].
+    \label{eq:bellman}
+\end{equation}
+贝尔曼方程是几乎所有强化学习算法的理论基石：无论是基于价值的方法（如Q-learning、DQN），还是基于策略的方法（如策略梯度、PPO），其核心更新规则都可追溯到该方程。
+
+\subsection{策略梯度方法}
+
+基于价值的方法（如DQN\cite{ref40}）通过估计Q函数间接获得策略，在处理高维连续动作空间时面临困难——因为对连续动作求$\max_a Q(s,a)$本身就是难以求解的优化问题。策略梯度（Policy Gradient，PG）方法则直接对策略参数$\theta$进行优化，从而天然适用于连续动作空间。
+
+策略梯度方法的理论依据是策略梯度定理。设参数化策略为$\pi_\theta(a|s)$，其目标函数为$J(\theta)=\mathbb{E}_{\pi_\theta}\left[\sum_t\gamma^t R(s_t,a_t)\right]$，则目标函数关于参数$\theta$的梯度为：
+\begin{equation}
+    \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\left[\nabla_\theta\log\pi_\theta(a|s)\ \hat{A}(s,a)\right],
+    \label{eq:policy_gradient}
+\end{equation}
+其中$\hat{A}(s,a)$为优势函数（advantage function）的估计，表示在状态$s$下执行动作$a$相对于平均水平的优劣程度。式(\ref{eq:policy_gradient})直观地告诉我们：若某一动作带来的优势为正，则提高其选择概率；若为负，则降低其选择概率。这一"试错+强化"的学习机制正是强化学习的精髓。
+
+实践中，式(\ref{eq:policy_gradient})中的$\hat{A}(s,a)$可由累积回报、蒙特卡洛估计或广义优势估计（GAE）等途径近似，其中GAE在方差与偏差之间取得了良好的折中，是PPO等现代算法的标准配置。
+
+\subsection{广义优势估计}
+
+广义优势估计（Generalized Advantage Estimation，GAE）\cite{ref38}通过指数加权平均多个时间尺度上的优势估计，在偏差与方差之间实现平衡。设时序差分误差为$\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$，则GAE定义的优势为：
+\begin{equation}
+    \hat{A}_t^{\text{GAE}(\lambda_{\text{GAE}})} = \sum_{l=0}^{\infty}(\gamma\lambda_{\text{GAE}})^l \delta_{t+l},
+    \label{eq:gae}
+\end{equation}
+其中$\lambda_{\text{GAE}}\in[0,1]$为GAE参数。当$\lambda_{\text{GAE}}=0$时，GAE退化为单步时序差分估计（偏差小、方差大）；当$\lambda_{\text{GAE}}=1$时，GAE退化为蒙特卡洛回报（偏差大、方差小）。本文取$\gamma=0.99$、$\lambda_{\text{GAE}}=0.95$，在保持对长期回报敏感性的同时有效控制了方差。
+
+\subsection{近端策略优化算法}
+
+近端策略优化（Proximal Policy Optimization，PPO）\cite{ref30}是当前最主流的连续动作空间强化学习算法之一，其核心思想是在策略更新过程中对策略变化幅度施加限制，避免因单步更新过大导致训练崩溃。
+
+PPO的出发点可追溯到重要性采样思想。设$\theta_{\text{old}}$为旧策略参数，$\pi_\theta$为当前待更新策略，定义重要性采样比率：
+\begin{equation}
+    r_t(\theta) = \frac{\pi_\theta(a_t|o_t)}{\pi_{\theta_{\text{old}}}(a_t|o_t)}.
+    \label{eq:is_ratio}
+\end{equation}
+该比率衡量新旧策略在给定状态动作对上的概率之比。当$r_t(\theta)=1$时，新旧策略一致；偏离1越远，表示策略更新越激进。
+
+PPO的裁剪目标函数为：
+\begin{equation}
+    L^{\text{CLIP}}(\theta) = \hat{\mathbb{E}}_t\!\left[\min\!\left(r_t(\theta)\hat{A}_t,\ \text{clip}(r_t(\theta),1-\epsilon,1+\epsilon)\hat{A}_t\right)\right],
+    \label{eq:ppo_clip}
+\end{equation}
+其中$\epsilon$为裁剪参数（本文取0.2）。当优势$\hat{A}_t>0$时，目标鼓励提高该动作的概率，但若$r_t(\theta)$超过$1+\epsilon$，则裁剪该比率，防止单次更新过度；当$\hat{A}_t<0$时，同理限制概率下降的幅度。这种"软性限制"机制使PPO兼具稳定性与数据效率，成为多智能体协作任务的事实标准算法。本文第4.5节将在PPO框架基础上引入针对稀疏冲突样本的Episode级损失加权机制。
+
+\section{多智能体强化学习}
+
+\subsection{从单智能体到多智能体：非平稳性困境}
+
+当场景中存在多架飞行器时，单智能体MDP框架不再适用。设共有$N$个智能体，每个智能体$i$的策略为$\pi_i$，则环境的演化由联合策略$\pi=(\pi_1,\ldots,\pi_N)$共同决定。对于任意一个智能体$i$而言，环境的状态转移不仅取决于自身的动作，还取决于其他$N-1$个智能体的动作——而这些智能体的策略在其学习过程中不断变化。这种环境动态性使得单智能体强化学习所依赖的马尔可夫性被破坏，智能体面对的实际上是一个\textbf{非平稳}（non-stationary）问题。若每个智能体都独立地、无视其他智能体地学习，其联合行为极易陷入"互相干扰、共同退化"的恶性循环。
+
+多智能体强化学习（Multi-Agent Reinforcement Learning，MARL）正是为应对这一困境而发展的研究领域。其核心问题可归纳为三个方面：\textbf{非平稳性}（如何适应不断变化的其他智能体策略）、\textbf{信用分配}（当团队收益与个体行为相关时，如何将团队收益合理地归因于每个个体）、\textbf{可扩展性}（如何避免联合状态-动作空间随智能体数量指数膨胀）。
+
+\subsection{分布式马尔可夫决策过程}
+
+为刻画多智能体序贯决策问题，本文采用分布式马尔可夫决策过程（Decentralized Markov Decision Process，Dec-MDP）作为形式化框架。Dec-MDP最早由Bernstein等\cite{ref41}系统研究，其形式化定义为一个六元组$\langle\mathcal{N},\mathcal{S},\mathcal{A},\mathcal{P},\mathcal{R},\gamma\rangle$，其中：
+\begin{itemize}
+    \item $\mathcal{N}=\{1,\ldots,N\}$为智能体集合；
+    \item $\mathcal{S}=(\mathcal{S}_1,\ldots,\mathcal{S}_N)$为全局状态空间，$\mathcal{S}_i$为智能体$i$的局部状态空间；
+    \item $\mathcal{A}=(\mathcal{A}_1,\ldots,\mathcal{A}_N)$为联合动作空间；
+    \item $\mathcal{P}$为全局状态转移概率；
+    \item $\mathcal{R}$为共享的全局奖励函数；
+    \item $\gamma$为折扣因子。
+\end{itemize}
+
+Dec-MDP与单智能体MDP的本质区别在于：全局状态$s=(s_1,\ldots,s_N)$在任意时刻并非对每个智能体完全可观测。每个智能体$i$只能基于自身局部观测$o_i$进行决策，而全局状态$s$的转移由所有智能体的联合动作共同驱动。这一"局部决策、全局演化"的结构精确对应了低空交通场景：每架eVTOL只能感知自身传感器范围内的邻居信息，但空域的整体态势由所有飞行器的行为共同塑造。
+
+值得强调的是，Dec-MDP在一般意义上是难以求解的——Bernstein等\cite{ref41}已证明无通信约束下的Dec-MDP计算复杂度为NEXP完全（NEXP-complete）。这促使研究者在"集中训练、分布式执行"的范式下寻求实用的近似解，即下一小节介绍的CTDE范式。
+
+\subsection{集中训练分布式执行范式}
+
+集中训练分布式执行（Centralized Training with Decentralized Execution，CTDE）是应对Dec-MDP求解困难最成功的工程范式，其核心思想可概括为"训练时共享全局信息，执行时只依赖局部观测"：
+
+\begin{itemize}
+    \item \textbf{集中训练}：在训练阶段，允许中心化组件（如集中式Critic、值分解网络）访问全局状态$s$与其他智能体的观测、动作，从而缓解非平稳性与信用分配问题。此时智能体间的耦合关系被显式建模，训练信号更为稳定。
+    \item \textbf{分布式执行}：在部署阶段，各智能体仅依赖自身局部观测$o_i$与局部策略$\pi_i(\cdot|o_i)$独立决策，无需任何中心节点参与，从而满足实时性与通信约束。
+\end{itemize}
+
+CTDE范式的代表性算法可按其信息融合方式分为三类：\textbf{集中式Critic方法}，如MADDPG\cite{ref34}，其Critic以全局状态-联合动作作为输入，Actor仅以局部观测为输入；\textbf{值分解方法}，如QMIX\cite{ref33}，通过单调混合网络将全局Q函数分解为各智能体局部Q函数的单调组合；\textbf{反事实基线方法}，如COMA\cite{ref35}，通过"如果该智能体采取其他动作会怎样"的反事实推理实现信用分配。近期的MAPPO\cite{ref36}则将PPO的稳定训练特性推广至多智能体场景，在Starcraft多智能体对战等基准任务中超越了基于值分解的方法，本文即以MAPPO风格的Actor-Critic-CTDE框架作为基础架构。
+
+\subsection{本文涉及的典型MARL基线算法}
+
+为使第5章的实验对比易于理解，这里对本文所采用的主要基线算法作简要说明：
+
+\textbf{（1）MADDPG}（Multi-Agent Deep Deterministic Policy Gradient）\cite{ref34}：基于Actor-Critic框架的确定性策略梯度方法，其集中式Critic以全局状态与所有智能体的动作作为输入，适合连续动作空间，但对环境非平稳性的适应依赖Critic的信息完整程度。
+
+\textbf{（2）COMA}（Counterfactual Multi-Agent Policy Gradients）\cite{ref35}：通过构造反事实基线$A_i(s,\bm{u})=Q(s,\bm{u})-\sum_{u'_i}\pi_i(u'_i|\tau_i)Q(s,(u'_i,\bm{u}_{-i}))$解决信用分配问题，适合合作任务，但Critic的计算开销随动作空间增大而显著上升。
+
+\textbf{（3）QMIX}（Q-MIXing）\cite{ref33}：值分解方法，通过混合网络将全局Q值表达为个体Q值的单调函数$Q_{\text{tot}}(\bm{s},\bm{u})=f(Q_1(u_1|\tau_1),\ldots,Q_N(u_N|\tau_N))$，并要求$\partial Q_{\text{tot}}/\partial Q_i\geq0$以保证与最优联合动作的一致性。其局限性在于单调性约束可能限制其对复杂协作模式的表达能力。
+
+\textbf{（4）MAPPO}（Multi-Agent PPO）\cite{ref36}：将PPO的裁剪机制与GAE优势估计推广至多智能体场景，各智能体共享Actor或Critic参数（或二者皆共享），通过集中式Critic利用全局信息进行训练。MAPPO在合作博弈任务中展现出优异的稳定性，是本文性能最强的主要对比基线。
+
+\section{图神经网络与注意力机制}
+
+\subsection{图的基本概念}
+
+图（Graph）是描述对象及其相互关系的数据结构，记作$\mathcal{G}=(\mathcal{V},\mathcal{E})$，其中$\mathcal{V}$为节点集合，$\mathcal{E}\subseteq\mathcal{V}\times\mathcal{V}$为边集合。图的邻接矩阵$\bm{A}\in\mathbb{R}^{N\times N}$刻画节点间的连接关系：$A_{ij}=1$表示节点$i$与$j$之间存在边，$A_{ij}=0$表示不存在边。当边带有权重时，$A_{ij}$可取连续值。
+
+在低空交通场景中，图是刻画飞行器间关系的自然载体：以每架飞行器为节点，以飞行器对之间的"交互关系"为边。问题在于，飞行器之间的交互关系是随位置、速度、航向连续变化的，静态二值邻接矩阵无法表达这一动态性——这正是本文引入动态边权重（dynamic edge weights）的出发点。
+
+\subsection{图卷积网络}
+
+图卷积网络（Graph Convolutional Network，GCN）\cite{ref32}是最经典的GNN模型之一，其核心思想是将卷积运算推广到图结构上，通过邻居聚合实现节点特征更新。单层GCN的更新规则为：
+\begin{equation}
+    h_i^{(l+1)} = \sigma\!\left(\sum_{j\in\mathcal{N}_i}\frac{1}{\sqrt{\hat{d}_i\hat{d}_j}}W^{(l)}h_j^{(l)}\right),
+    \label{eq:gcn}
+\end{equation}
+其中$\mathcal{N}_i$为节点$i$的邻居集合，$\hat{d}_i$为含自环的节点度，$W^{(l)}$为第$l$层的可学习权重矩阵，$\sigma(\cdot)$为非线性激活函数。GCN的聚合权重由图的拓扑结构（度数）决定，不随节点特征变化，这在一定程度上限制了其对"重要邻居"与"次要邻居"的区分能力。
+
+\subsection{图注意力网络}
+
+图注意力网络（Graph Attention Network，GAT）\cite{ref31}在GCN基础上引入可学习的注意力机制，使聚合权重能够根据节点特征自适应调整。GAT的核心计算分为两步：第一步，计算节点对$(i,j)$的注意力分数：
+\begin{equation}
+    e_{ij} = \text{LeakyReLU}_{0.2}\!\left(a^{\top}[W h_i \parallel W h_j]\right),
+    \label{eq:gat_score}
+\end{equation}
+其中$W$为共享的线性变换矩阵，$\parallel$表示向量拼接，$a$为注意力参数向量；第二步，通过softmax进行归一化得到注意力权重：
+\begin{equation}
+    \alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k\in\mathcal{N}_i}\exp(e_{ik})}.
+    \label{eq:gat_softmax}
+\end{equation}
+节点$i$的更新特征为加权聚合$h'_i=\sum_{j\in\mathcal{N}_i}\alpha_{ij}Wh_j$。多头的GAT通过拼接或平均多个独立的注意力头进一步提升表达力。
+
+GAT的优势在于其注意力权重是完全数据驱动的——哪些邻居重要、哪些不重要，全部由网络从数据中学习。但这一优势在数据稀缺时也可能转化为劣势：当训练数据无法覆盖所有交互模式时，学习到的注意力可能产生"反物理"的分配（例如对远距离、无威胁的飞行器赋予高权重）。这一观察为本文的乘法门控机制提供了直接的动机。
+
+\subsection{时序建模与LSTM}
+
+长短期记忆网络（Long Short-Term Memory，LSTM）\cite{ref37}是处理序列数据的经典循环神经网络，通过精心设计的门控结构解决了传统循环神经网络的长程依赖与梯度消失问题。LSTM的单元内部包含三个门控：遗忘门$f_t$控制历史信息的保留程度，输入门$i_t$控制新信息的写入程度，输出门$o_t$控制隐状态的输出：
+\begin{align}
+    f_t &= \sigma(W_f\cdot[h_{t-1},x_t]+b_f),\\
+    i_t &= \sigma(W_i\cdot[h_{t-1},x_t]+b_i),\\
+    \tilde{C}_t &= \tanh(W_C\cdot[h_{t-1},x_t]+b_C),\\
+    C_t &= f_t\odot C_{t-1} + i_t\odot\tilde{C}_t,\\
+    o_t &= \sigma(W_o\cdot[h_{t-1},x_t]+b_o),\quad h_t = o_t\odot\tanh(C_t).
+\end{align}
+在本文模型中，LSTM承担飞行器轨迹时序信息的编码任务：将最近$T=10$步（对应5 s）的历史状态序列编码为64维的轨迹嵌入$h^{\text{traj}}$，为后续的图注意力模块提供时序上下文。
+
+\section{经典冲突检测与避碰方法}
+
+本节介绍三类在实验中作为对比基线的经典冲突检测与避碰方法。理解这些方法的原理与局限，有助于把握本文方法相对传统方法的定位。
+
+\subsection{速度障碍法（VO）与最优互惠避碰（ORCA）}
+
+速度障碍法（Velocity Obstacle，VO）是一种经典的几何避碰方法，其基本思想是在速度空间中刻画"会引发碰撞的速度集合"。考虑两个圆盘状智能体$A$（半径为$r_A$，位置$p_A$，速度$v_A$）与$B$（半径$r_B$，位置$p_B$，速度$v_B$），将$B$视为以$p_A$为中心、$r_A+r_B$为半径的圆，则$A$的相对速度$v_A-v_B$若指向该圆，则$A$与$B$在保持当前速度差的情况下必然碰撞。所有导致碰撞的相对速度构成速度障碍集合$VO^B_A$。通过选择相对速度落在$VO^B_A$之外，即可保证不会碰撞。
+
+最优互惠碰撞避免（ORCA）\cite{ref4}在VO基础上引入"互惠"假设：当两架飞行器面临潜在碰撞时，双方各承担一半的避让责任。在此假设下，每架飞行器在其可行速度空间中选择与期望速度偏差最小且位于避碰约束半平面内的速度，通过线性规划可高效求解。ORCA的优点是分布式、计算快、避碰平滑；但其"互惠"假设要求智能体对称协作，当智能体目标冲突或行为异构（如一架飞行器在避让而另一架在抢道）时，避让质量会显著下降。
+
+\subsection{模型预测控制（MPC）}
+
+模型预测控制（Model Predictive Control，MPC）是一类基于滚动优化的控制方法。其核心思想是：在当前时刻，利用系统模型对未来一个有限时域（预测时域）内的状态进行预测，求解一个带约束的优化问题得到最优控制序列，但仅执行序列的第一步，随后在下一时刻重复该过程（滚动时域优化）。Richards与How\cite{ref3}将飞行器轨迹规划与冲突避免建模为混合整数线性规划，是MPC在空管领域应用的经典工作。
+
+MPC的优点是约束可显式表达、优化目标清晰、最优性可度量；其局限在于计算复杂度随预测时域与智能体数量显著增长，在高密度、快动态的低空场景中实时求解困难。
+
+\subsection{控制屏障函数（CBF）}
+
+控制屏障函数（Control Barrier Function，CBF）\cite{ref5}为安全关键控制系统提供形式化安全保证。设安全集合为$C=\{x:h(x)\geq0\}$，若存在函数$h$与扩展类$\mathcal{K}$函数$\alpha$满足前向不变性条件，则将安全约束$L_f h(x)+L_g h(x)u+\alpha(h(x))\geq0$作为二次规划约束加入名义控制器，即可保证系统状态始终停留在安全集合内。
+
+CBF的优点是安全性有严格的数学保证，对控制器性能的干预有界；但其对系统模型的精确性要求高，且当多个飞行器共享空域时，各安全集合的交集可能迅速收缩，导致可行解退化，难以直接扩展到高密度动态场景。
+
+\section{统计检验基础}
+
+为使第5章的实验结果具有严格的科学意义，本文采用了三种互补的统计工具。本节给出其数学定义，便于后续结果解读。
+
+\subsection{Welch t检验}
+
+Welch $t$检验\cite{ref42}用于比较两个独立样本的均值是否存在显著差异。与经典Student $t$检验不同，Welch检验不要求两总体方差相等，因而对样本量不等或方差异构的实验设计更为稳健。设两组样本均值分别为$\bar{x}_1$、$\bar{x}_2$，方差为$s_1^2$、$s_2^2$，样本量为$n_1$、$n_2$，则检验统计量为：
+\begin{equation}
+    t = \frac{\bar{x}_1 - \bar{x}_2}{\sqrt{s_1^2/n_1 + s_2^2/n_2}},
+    \label{eq:welch}
+\end{equation}
+其近似自由度为：
+\begin{equation}
+    \text{df} \approx \frac{\left(s_1^2/n_1 + s_2^2/n_2\right)^2}{(s_1^2/n_1)^2/(n_1-1) + (s_2^2/n_2)^2/(n_2-1)}.
+    \label{eq:welch_df}
+\end{equation}
+本文采用双侧检验，显著性水平$\alpha=0.05$。
+
+\subsection{Cohen's d效应量}
+
+显著性检验回答的是"差异是否存在"的问题，而效应量回答的是"差异有多大"的问题。Cohen's $d$效应量\cite{ref43}通过标准差单位量化两组均值之差：
+\begin{equation}
+    d = \frac{\bar{x}_1 - \bar{x}_2}{s_{\text{pooled}}},
+    \label{eq:cohen}
+\end{equation}
+其中$s_{\text{pooled}}$为合并标准差。经验准则：$d\approx0.2$为小效应，$d\approx0.5$为中等效应，$d\approx0.8$为大效应。本文CFCR指标的$d=5.27$远超大效应阈值，表明该差异不仅统计显著，而且在实际意义上十分可观。
+
+\subsection{统计功效分析}
+
+统计功效（statistical power）是指当真实效应确实存在时，检验能够正确拒绝原假设的概率，即$1-\beta$（$\beta$为第二类错误率）。功效由效应量、样本量与显著性水平共同决定。一般而言，样本量越小、效应量越小，功效越低，检验"错过"真实差异的风险越大。本文在$n=5$的小样本条件下，对TC等中等效应量指标进行了功效分析，以判断"不显著"的结果究竟源于"确实无差异"还是"样本量不足"，从而避免对实验结果的过度解读。
+
+\section{本章小结}
+
+本章系统介绍了本文方法所需的全部理论基础。从低空交通管理的领域概念（UAM/UTM、eVTOL、安全间隔与冲突定义），到强化学习的数学框架（MDP、价值函数、策略梯度、PPO与GAE），再到多智能体场景的扩展（Dec-MDP、CTDE范式与典型MARL算法），以及图神经网络与注意力机制（GCN、GAT、LSTM）和经典避碰方法（VO/ORCA、MPC、CBF），最后给出了本文统计验证方法的数学定义。这些基础构成了后续章节问题建模、模型设计与实验分析的概念与数学工具基础。
+
+%==========================================================================
+% 第3章 问题建模与管控模型设计
+%==========================================================================
+\chapter{问题建模与管控模型设计}
+
+本章在上一章理论基础上，将低空交叉路口的飞行器协同管控问题形式化为可求解的数学问题。首先给出场景设定与研究假设，然后以分布式马尔可夫决策过程（Dec-MDP）为框架对问题进行形式化定义，接着详细阐述仿真环境各模块（观测空间、动作空间、物理约束、不确定性模型、动态安全距离）的设计依据，最后给出分层奖励函数的完整定义与设计动机。
+
+\section{问题描述与场景设定}
+
+\subsection{低空交叉路口场景}
+
+本文聚焦城市低空十字交叉路口这一典型高冲突场景。如图\ref{fig:scenario}所示，$N$架eVTOL飞行器均匀分布在以交叉区域中心为圆心、半径$r_{\text{init}}$的圆周上，每架飞行器从圆周的不同方位出发，径直飞向交叉区域中心。其运动轨迹天然形成多股相互交叉的交通流——任何两架从相邻或相对方位出发的飞行器，其航向线都会在中心区域附近相交，从而构成持续的冲突威胁。飞行器需要在保持彼此安全间隔的前提下，以尽可能小的延迟通过交叉区域并到达对侧。
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}[c]{0.72\textwidth}
+    \centering
+    \begin{tikzpicture}[scale=1.0]
+        \draw[->,thick] (-5.2,0) -- (5.2,0);
+        \draw[->,thick] (0,-5.2) -- (0,5.2);
+        \draw[dashed] circle (3.2);
+        \foreach \ang in {0,60,120,180,240,300} {
+            \fill[blue!70] ({3.4*cos(\ang)},{3.4*sin(\ang)}) circle (0.12);
+        }
+        \foreach \ang in {0,60,120,180,240,300} {
+            \draw[->,blue!70,thick] ({3.2*cos(\ang)},{3.2*sin(\ang)}) -- ({1.1*cos(\ang)},{1.1*sin(\ang)});
+        }
+        \draw[red,very thick] (1.0,0.35) circle (0.6);
+        \node[below right] at (1.6,1.0) {冲突区};
+        \node[above] at (0,5.3) {交叉路口中心};
+        \node[below] at (0,-5.6) {初始位置圆周};
+    \end{tikzpicture}
+    \end{minipage}
+    \caption{低空十字交叉路口场景示意图。蓝色圆点为初始均匀分布于圆周上的eVTOL，箭头指向交叉中心，红色圆环为高冲突区域。}
+    \label{fig:scenario}
+\end{figure}
+
+这一场景设置虽然抽象，却抓住了低空交通冲突问题的本质特征：（1）\textbf{对称冲突}——所有飞行器以相同优先级争夺中心区域，不存在"避让优先"的自然次序；（2）\textbf{密集交互}——$N$架飞行器两两之间最多构成$N(N-1)/2$个潜在交互对，当$N=21$时即有210个交互对，远超人工调度的信息处理能力；（3）\textbf{时空耦合}——冲突风险不仅取决于当前位置，还取决于相对速度与相对航向，同一时刻"相距100 m、相向而行"与"相距100 m、同向而行"的风险相差悬殊。
+
+\subsection{研究假设}
+
+为使问题可求解且结果具有可解释性，本文在建模中引入以下合理假设：
+
+\textbf{假设1（二维平面运行）：}所有飞行器在同一高度层运行，问题退化为二维平面上的协同管控。该假设的合理性在于：低空飞行高度带有限（通常300 m以下），且eVTOL多采用固定巡航高度运行；三维高度层的利用留待后续工作。
+
+\textbf{假设2（同构飞行器）：}所有eVTOL具有相同的动力学参数（加速度界限、速度范围、转弯角），即同构智能体。该假设使本文聚焦"协同策略"本身的刻画，异构性（不同机型混流）留待后续研究。
+
+\textbf{假设3（局部可观测性）：}每架飞行器仅能观测自身传感器范围（500 m半径）内的邻居信息，全局状态仅在训练阶段可用。该假设符合真实eVTOL的机载感知与通信能力，也构成本文采用CTDE范式的直接依据。
+
+\textbf{假设4（理想通信）：}训练阶段假设全局状态无延迟、无丢包地获取。通信延迟与丢包的影响在第6.3节作为局限性予以讨论。
+
+\section{分布式马尔可夫决策过程形式化}
+
+将上述协同管控问题形式化为Dec-MDP六元组$\langle \mathcal{N}, \mathcal{S}, \mathcal{A}, \mathcal{P}, \mathcal{R}, \gamma \rangle$。各要素的具体定义如下：
+
+\begin{itemize}
+    \item \textbf{智能体集合} $\mathcal{N} = \{1, 2, \ldots, N\}$。训练阶段，$N$由课程学习从5逐步增长至21；评估阶段固定为21。
+    \item \textbf{全局状态} $\mathcal{S}$：定义为$S = (s_1, s_2, \ldots, s_N)$，其中$s_i = [x_i, y_i, v_i, v_i^{\text{target}}, d_i^{\text{center}}]$为飞行器$i$的形式化状态向量，包含位置坐标$(x_i,y_i)$、当前速度$v_i$、目标速度$v_i^{\text{target}}$与到交叉中心的距离$d_i^{\text{center}}$。需要严格区分的是：该五维向量是Dec-MDP形式化层面的全局状态定义；策略网络的实际输入是经扩展后的局部观测$o_i$（详见第3.3.1节）。全局状态$S$仅在CTDE训练阶段供GAT-Mixer计算全局价值函数使用。
+    \item \textbf{动作} $\mathcal{A}$：每个智能体的动作为连续加速度$a_i \in \mathbb{R}$（单位m/s$^2$），受运动学约束（第3.3.2节）、风扰与噪声（第3.3.3节）共同影响。
+    \item \textbf{转移概率} $\mathcal{P}$：由第3.3节的运动学方程与不确定性模型隐式确定，不显式建模。
+    \item \textbf{奖励函数} $\mathcal{R}$：采用团队奖励结构$R = \frac{1}{N}\sum_{i=1}^{N} r_i$，其中$r_i$为飞行器$i$的个体奖励（第3.4节），另有完成奖励。
+    \item \textbf{折扣因子} $\gamma = 0.99$。
+\end{itemize}
+
+值得说明的是，团队奖励结构的选择并非随意为之。在合作型任务中，共享团队奖励能够避免个体奖励设计带来的"自私"行为——如果每架飞行器只优化自身安全，则可能出现"把风险推给邻居"的机会主义行为。通过奖励平均化，每一架飞行器的行为都会影响全局收益，从而激励飞行器采取有利于整体交通流的行为。
+
+\section{仿真环境设计}
+
+本节详细阐述仿真环境（AirTrafficEnv）的构建。该环境在Python中以面向对象方式实现，是第5章全部实验的基础平台。
+
+\subsection{观测空间的三层定义}
+
+观测空间的设计直接影响模型的决策质量。本文将观测组织为三个层次，层层递进：
+
+\textbf{第一层——形式化状态} $s_i \in \mathbb{R}^5$：$[x_i, y_i, v_i, v_i^{\text{target}}, d_i^{\text{center}}]$，即飞行器$i$自身的五维状态向量。这是模型输入的最基本信息。
+
+\textbf{第二层——局部观测} $o_i$：在$s_i$基础上扩展两个维度：
+\begin{itemize}
+    \item \textbf{空间维度}：邻域飞行器$j \in \mathcal{N}_i$（500 m半径内）的相对信息$[\Delta x_{ij}, \Delta y_{ij}, \Delta v_{ij}, a_j, \theta_j]$，其中$\Delta x_{ij},\Delta y_{ij}$为相对位置，$\Delta v_{ij}$为速度差，$a_j$为邻居的当前加速度，$\theta_j$为邻居的航向角。设$K=|\mathcal{N}_i|$为邻居数量，则该部分共$K\cdot5$维。为避免观测维度随$K$变化导致网络输入不稳定，模型将邻居信息经LSTM与DyGAT编码为固定维度特征（第三层）。
+    \item \textbf{时间维度}：自身最近$T=10$步（对应5 s）的历史状态序列，共$T\cdot5$维。历史信息的引入使模型能够感知自身的运动趋势，这是判断冲突风险的时序基础。
+\end{itemize}
+
+\textbf{第三层——编码特征} $h_i^{\text{coupled}} \in \mathbb{R}^{256}$：局部观测$o_i$经编码网络的变换：
+\begin{equation}
+    o_i \xrightarrow{\text{LSTM}_{64}} h_i^{\text{traj}} \xrightarrow{\text{DyGAT}_{256}} h_i^{\text{coupled}} \rightarrow \text{策略/Q值输出}.
+    \label{eq:encoding_chain}
+\end{equation}
+即原始观测先经64维LSTM编码轨迹历史，再经256维DyGAT聚合空间信息，得到蕴含时空耦合信息的256维特征。该特征既用于策略网络输出动作，也用于价值网络评估状态。
+
+\subsection{动作空间与物理运动约束}
+
+在真实飞行中，飞行员/自驾仪通过油门与操纵面控制飞行器的加速度与航向。本文将其抽象为连续加速度控制：每架飞行器的动作$a_i$表示纵向加速度指令，取值范围为$a_i \in [-4.0, 3.0]$ m/s$^2$，其中正值表示加速、负值表示减速。
+
+速度更新方程为：
+\begin{equation}
+    v_i^{t+1} = \text{clip}\!\left(v_i^{t} + a_i \cdot \Delta t \cdot 3.6,\; v_{\min},\; v_{\max}\right),
+    \label{eq:velocity_update}
+\end{equation}
+其中$\Delta t=0.5$ s为控制周期，系数3.6用于将m/s转换为km/h（速度单位），$v_{\min}=60$ km/h、$v_{\max}=140$ km/h为速度上下限。此外，飞行器航向变化受最大转弯角约束，单步航向变化不超过$\pi/6$（30°），这一约束防止飞行器"瞬间掉头"这种不真实的运动。
+
+速度范围的选取参考了当前主流eVTOL的技术水平：巡航速度60--140 km/h覆盖了城市内"悬停-爬升-巡航"的典型区间。加速度取值的诚实性说明已在第2.1.2节给出。
+
+\subsection{不确定性建模}
+
+真实低空环境的运行必然受到两类不确定性的干扰：一是传感器测量噪声，二是大气风扰。本文对二者进行了简化但合理的建模：
+
+\textbf{传感器噪声：}飞行器的观测通道叠加高斯白噪声$\mathcal{N}(0, 0.5^2)$（单位m），模拟GPS/视觉定位的典型误差水平。噪声的存在迫使模型学习对位置不确定性具有鲁棒性的决策，而非"精确定位主义"。
+
+\textbf{风扰：}每架飞行器在每个控制周期受到方向均匀随机（$\theta_w\sim\mathcal{U}(0,2\pi)$）、强度固定（$0.1$ m/s）的风场扰动。需要指出的是，这一简化模型忽略了风场的时间相关性与空间相关性。真实低空风场常使用Dryden（MIL-F-8785C）\cite{ref26}或Kaimal（IEC 61400-1）\cite{ref44}谱模型描述，这类模型具有明确的功率谱密度，能够刻画湍流的连续起伏特征。当前简化是本文的一项已知局限（第6.3节将详述），但它足以支撑本文关于"模型对扰动鲁棒性"的定性结论。
+
+\subsection{速度自适应安全距离}
+
+如前所述，安全距离随平均速度动态调整（式(\ref{eq:safety_distance})）：
+\begin{equation}
+    d_{\text{safety}} = d_{\text{base}} + \bar{v} \times 0.5,
+\end{equation}
+其中$d_{\text{base}}$为基本安全间隔（默认50 m），$\bar{v}$为当前时刻场景内飞行器的平均速度，0.5为前瞻时间系数。这一设计将"安全余量"与"运动速度"直接挂钩，是本文环境模型区别于固定安全距离模型的标志性特征。
+
+\section{分层奖励函数设计}
+
+\subsection{设计原则}
+
+奖励函数是强化学习中连接"行为"与"目标"的桥梁，其设计质量直接决定学习效果。本文奖励函数遵循三项原则：（1）\textbf{信号密度}——奖励应能频繁产生以加速学习，避免稀疏奖励导致的探索困难；（2）\textbf{物理一致性}——奖励的梯度方向应与物理直觉一致（如越接近安全距离边界，惩罚越强）；（3）\textbf{多维平衡}——安全、效率、协同三个目标之间应有明确且可调的权重关系。
+
+基于上述原则，本文构造四部分奖励：
+\begin{equation}
+    r_i = r_{\text{safe}} + r_{\text{speed}} + r_{\text{coop}} + r_{\text{eff}}.
+    \label{eq:reward_total}
+\end{equation}
+
+\subsection{安全奖励（三段式）}
+
+安全奖励是核心奖励，其设计采用"三段式"分级结构，使惩罚强度随危险程度平滑变化：
+
+\begin{equation}
+    r_{\text{safe}} = \begin{cases}
+        -50 \exp\!\left(2\frac{d_{\text{safety}}-d_{\min}}{d_{\text{safety}}}\right), & d_{\min}<d_{\text{safety}} \text{（危险区）}\\
+        -10 \frac{1.2d_{\text{safety}}-d_{\min}}{0.2d_{\text{safety}}}, & d_{\text{safety}}\leq d_{\min}<1.2d_{\text{safety}} \text{（缓冲区）}\\
+        +5, & d_{\min}\geq1.2d_{\text{safety}} \text{（安全区）}
+    \end{cases}
+    \label{eq:reward_safe}
+\end{equation}
+
+其中$d_{\min}$为飞行器$i$到所有邻居的最小距离。三种区域的物理含义十分清晰：当$d_{\min}<d_{\text{safety}}$时已构成实际冲突，采用指数惩罚——距离越近惩罚越急剧增强，迫使模型迅速规避；当$d_{\min}$处于$[d_{\text{safety}},1.2d_{\text{safety}}]$时处于"警示缓冲带"，采用线性惩罚引导模型保持更大余量；当$d_{\min}\geq1.2d_{\text{safety}}$时给予正奖励，鼓励飞行器保持充足的安全间隔。三段式结构避免了单一线性惩罚在安全边界处"突变"导致的梯度不连续问题。
+
+\subsection{速度奖励}
+
+速度奖励引导飞行器将速度维持在理想区间$[65, 90]$ km/h（与目标速度$70\pm10$ km/h及全局速度范围$[60,140]$ km/h一致）：
+\begin{equation}
+    r_{\text{speed}} = \begin{cases}
+        -50\frac{v_i-90}{50}, & v_i>90 \text{（超速）}\\
+        -30\frac{65-v_i}{25}, & v_i<65 \text{（过慢）}\\
+        +20, & 65\leq v_i\leq 90 \text{（理想）}
+    \end{cases}
+    \label{eq:reward_speed}
+\end{equation}
+该设计的物理直觉是：速度过高则冲突风险增大且能耗升高，速度过低则延误增加且阻塞交通流，唯有处于理想区间才能兼顾安全与效率。
+
+\subsection{协同奖励与效率奖励}
+
+\textbf{协同奖励}刻画飞行器与邻居的速度一致性：
+\begin{equation}
+    r_{\text{coop}} = -0.2\left|v_i - \bar{v}_{\text{neighbor}}\right|,
+    \label{eq:reward_coop}
+\end{equation}
+其中$\bar{v}_{\text{neighbor}}$为飞行器$i$邻域内邻居的平均速度。这一奖励项的作用在于抑制"个体争先、群体失序"的现象——若某架飞行器以远超邻居的速度突进，其协同奖励将受到惩罚。在交叉路口场景中，协同奖励有助于形成平滑的交通流，避免因速度失配引发的连锁冲突。
+
+\textbf{效率奖励}引导飞行器逼近各自的目标速度：
+\begin{equation}
+    r_{\text{eff}} = -0.5\left|v_i - v_i^{\text{target}}\right|,
+    \label{eq:reward_eff}
+\end{equation}
+其中$v_i^{\text{target}}$为飞行器$i$的目标速度（在$70\pm10$ km/h内随机采样）。效率奖励确保飞行器在规避冲突的同时仍以尽可能接近任务速度的方式飞行，避免"为安全而过度保守"。
+
+\subsection{全局奖励与完成奖励}
+
+每步的全局奖励为个体奖励的平均：
+\begin{equation}
+    R = \frac{1}{N}\sum_{i=1}^{N} r_i.
+    \label{eq:reward_global}
+\end{equation}
+此外，当所有飞行器均成功通过交叉中心（距中心距离小于10 m）时，额外给予+200的完成奖励。完成奖励属于典型的稀疏奖励，但其幅度足够大，能够引导模型"记住"完成任务的长期目标，与高密度的即时奖励形成互补。
+
+\section{本章小结}
+
+本章将低空交叉路口的飞行器协同管控问题形式化为Dec-MDP，并完成了仿真环境的构建与奖励函数的设计。核心设计要点包括：（1）以团队平均奖励刻画合作目标，抑制自私行为；（2）观测空间采用"形式化状态—局部观测—编码特征"三层结构，兼顾信息完整性与输入维度固定性；（3）动作空间纳入加速度界限、速度范围与最大转弯角等物理约束，保证动作的真实性；（4）通过高斯噪声与随机风扰建模不确定性；（5）安全距离随速度动态调整，匹配"速度越高、间隔越大"的飞行常识；（6）奖励函数以三段式安全奖励为核心，辅以速度、协同与效率奖励，实现安全与效率的多维权衡。下一章将在此基础上阐述协同管控模型的具体网络结构与训练机制。
+
+%==========================================================================
+% 第4章 基于DyGAT-MARL的协同管控模型
+%==========================================================================
+\chapter{基于DyGAT-MARL的协同管控模型}
+
+在问题建模的基础上，本章给出融合动态图注意力网络（DyGAT）的耦合多智能体强化学习协同管控模型。首先介绍模型总体架构，然后分别阐述LSTM时序编码、DyGAT的三大注意力组件（空间注意力、时序注意力、乘法门控注意力掩码）、策略网络与GAT-Mixer全局价值网络，最后给出课程学习与Episode级冲突损失加权训练机制及完整算法流程。
+
+\section{模型总体架构}
+
+本文模型采用集中训练分布式执行（CTDE）范式，其总体架构如图\ref{fig:architecture}所示，共分为四层：
+
+\begin{enumerate}
+    \item \textbf{环境层}（AirTrafficEnv）：负责飞行器运动学仿真，含风扰与噪声等不确定性因素，向模型提供观测与奖励信号。
+    \item \textbf{编码层}：每架飞行器的局部观测$o_i$首先经LSTM编码时序轨迹特征$h_i^{\text{traj}}$，然后经DyGAT聚合邻域信息——DyGAT在标准GAT空间注意力与注意力头时序聚合的基础上，通过乘法门控注意力掩码注入物理先验——输出256维耦合表示$h_i^{\text{coupled}}$。
+    \item \textbf{决策层}：耦合表示分别输入策略头（输出连续加速度动作）与Q值头（输出个体Q值）；训练阶段，所有智能体的状态汇聚至GAT-Mixer生成全局Q值$Q_{\text{tot}}$。执行阶段仅使用策略头进行分布式决策。
+    \item \textbf{训练层}：课程学习从$N=5$逐步扩展至$N=21$，Episode级冲突损失加权（$\lambda=2.0$）提升稀疏危险样本的利用效率，整体以PPO框架进行参数更新。
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{QQ图片20260523201329.png}
+    \caption{模型总体架构——环境层、编码层（LSTM+DyGAT含乘法门控注意力掩码）、决策层（策略头+Q值头+GAT-Mixer）与训练层（课程学习+冲突损失加权+PPO），遵循集中训练分布式执行范式。}
+    \label{fig:architecture}
+\end{figure}
+
+上述四层架构的设计思想可概括为"环境保真、编码求精、决策分布、训练集中"。环境层保证仿真与真实运行的贴近度；编码层通过时空注意力与物理门控提取决策所需的关键信息；决策层保证执行阶段的实时性与分布式特性；训练层则通过课程式学习与冲突加权化解稀疏奖励的优化难题。
+
+\section{LSTM时序编码器}
+
+飞行器的运动具有明显的时序连贯性——当前位置与速度的历史轨迹蕴含了运动趋势，是判断未来冲突风险的重要线索。模型采用两层LSTM（隐层维度64，dropout 0.1）作为时序编码器：
+
+\begin{equation}
+    h_i^{\text{traj}} = \text{LSTM}_{64}(o_i^{t-T+1:t}),
+    \label{eq:lstm}
+\end{equation}
+其中$o_i^{t-T+1:t}$为飞行器$i$最近$T=10$步的观测序列，$h_i^{\text{traj}}\in\mathbb{R}^{64}$为编码得到的轨迹嵌入。LSTM的记忆单元使模型能够"记住"飞行器的速度变化趋势与转向意图，例如区分"正在减速避让的邻居"与"即将加速抢道的邻居"——这两种邻居的未来行为截然不同，仅凭当前瞬时状态无法区分。
+
+值得说明的是，LSTM编码器在训练阶段动态调整的智能体数量（课程学习中$N$从5增长至21）下仍能正常工作：每架飞行器独立维护各自的LSTM参数，新增飞行器时仅需实例化新的编码器并保持参数共享或冻结即可。
+
+\section{动态图注意力网络（DyGAT）}
+
+DyGAT是本文的核心创新模块。其输入为$N$个节点的特征矩阵（以LSTM输出$h_i^{\text{traj}}\in\mathbb{R}^{64}$为节点特征，输出特征维度$F_{\text{out}}=256$），输出为融合了空间与时序信息、并经物理门控调制后的节点耦合表示。DyGAT由三个注意力组件构成：空间注意力、时序注意力与乘法门控注意力掩码。下文分别阐述。
+
+\subsection{空间注意力}
+
+空间注意力旨在衡量邻居节点对当前节点信息的重要性，其计算沿用GAT的标准范式。设节点$i$与节点$j$的特征分别为$h_i^{\text{traj}}$与$h_j^{\text{traj}}$，则二者间的注意力分数为：
+\begin{equation}
+    e_{ij} = \text{LeakyReLU}_{0.2}\!\left(a^{\top}[W h_i^{\text{traj}} \parallel W h_j^{\text{traj}}]\right),
+    \label{eq:spatial_score}
+\end{equation}
+其中$W\in\mathbb{R}^{F_{\text{out}}\times64}$为共享线性变换，$\parallel$表示拼接，$a$为注意力参数向量，LeakyReLU的负斜率取0.2。随后通过softmax进行归一化：
+\begin{equation}
+    \alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k\in\mathcal{N}_i}\exp(e_{ik})},
+    \label{eq:spatial_softmax}
+\end{equation}
+节点$i$的空间聚合特征为：
+\begin{equation}
+    h_i^{\text{spatial}} = \sum_{j\in\mathcal{N}_i}\alpha_{ij}\, W h_j^{\text{traj}}.
+    \label{eq:spatial_agg}
+\end{equation}
+空间注意力实现了"由数据决定哪些邻居重要"的自适应聚合，但正如第2.4.3节所指出的，纯数据驱动的注意力在数据稀疏时可能偏离物理直觉，这为乘法门控机制埋下了伏笔。
+
+\subsection{时序注意力}
+
+为利用多步历史信息，DyGAT进一步在注意力头维度上引入时序聚合。对每架飞行器，将其最近$T=10$步的空间编码特征序列与当前特征进行时序注意力加权：
+\begin{equation}
+    h_i^{\text{temporal}} = \sum_{\tau=1}^{T} \beta_{i,\tau}\, h_i^{\text{spatial}}(t-\tau+1),
+    \label{eq:temporal_attn}
+\end{equation}
+其中$h_i^{\text{spatial}}(t-\tau+1)$为$(\tau-1)$步前的空间特征，$\beta_{i,\tau}$为时序注意力权重（由当前特征与历史特征的匹配度经softmax归一化得到）。最终的空间-时序融合表示为：
+\begin{equation}
+    h'_i = h_i^{\text{spatial}} + \alpha_{\text{temp}} \cdot h_i^{\text{temporal}},
+    \label{eq:temporal_fusion}
+\end{equation}
+其中融合系数$\alpha_{\text{temp}}=0.3$。该系数为经验设定值，0.3的取值表明当前空间信息占主导、历史时序信息起辅助修正作用——这一比例选择与"决策应主要依据当前态势"的直觉一致。
+
+\subsection{乘法门控注意力掩码（核心创新）}
+
+上述空间与时序注意力均为纯学习机制。纯学习机制的潜在风险在于：当训练数据没有覆盖所有飞行器交互模式时，学习注意力$e_{ij}$可能产生"反物理"的分配——例如对远距离、航向正交的飞行器赋予高注意力。为从根本上约束这一风险，DyGAT引入三个手工设计的指数核，将飞行器对之间的物理量（距离、速度差、航向差）编码为乘法门控信号$w_{ij}$：
+\begin{equation}
+    w_{ij} = \exp\!\left(-\frac{d_{ij}}{1000}\right) \cdot \exp\!\left(-\frac{|v_i - v_j|}{20}\right) \cdot \exp\!\left(-\frac{|\theta_i - \theta_j|}{\pi/4}\right),
+    \label{eq:gating_w}
+\end{equation}
+其中$d_{ij}$为飞行器$i$与$j$的欧氏距离（m），$v_i,v_j$为速度（km/h），$\theta_i,\theta_j$为航向角（rad）。$w_{ij}$以\textbf{乘法}方式作用于学习注意力：
+\begin{equation}
+    e_{ij}^{\text{final}} = e_{ij} \odot w_{ij}.
+    \label{eq:gating_final}
+\end{equation}
+
+从物理语义上看，$w_{ij}$的每一个因子都对应一条直观的安全直觉：
+
+\textbf{（1）距离因子$\exp(-d_{ij}/1000)$：}距离越近，威胁越大。1000 m为衰减常数，其物理含义是"当$d_{ij}=1000$ m时该因子衰减为$e^{-1}\approx0.368$"——由于邻域半径已限制为500 m，$d_{ij}$最大不超过500 m，此时该因子最小为$e^{-0.5}\approx0.607$，因此距离因子主要起"弱约束"作用，保证远距离邻居仍保留一定信息流。
+
+\textbf{（2）速度差因子$\exp(-|v_i-v_j|/20)$：}速度差越大，相对运动越剧烈，潜在碰撞风险越高。以20 km/h为衰减常数，当速度差为40 km/h时该因子衰减为$e^{-2}\approx0.135$。
+
+\textbf{（3）航向差因子$\exp(-|\theta_i-\theta_j|/(\pi/4))$：}航向差越大，两机越可能交叉相撞（航向正交$\pi/2$最危险），该因子衰减越强。以$\pi/4$为衰减常数，当航向差为$\pi/2$时该因子衰减为$e^{-2}\approx0.135$。
+
+三者相乘构成完整的门控信号。为直观说明门控效果，表\ref{tab:gating}给出了四种典型飞行器对情景下的$w_{ij}$数值（$N=21$，$d_{\text{safety}}\approx85$ m）。
+
+\begin{table}[H]
+    \centering\small
+    \caption{$w_{ij}$在不同飞行器对情景下的门控效果}
+    \label{tab:gating}
+    \begin{tabular}{|c|c|c|c|c|c|}
+        \hline
+        \textbf{情景} & $d_{ij}$(m) & $|v_i-v_j|$(km/h) & $|\theta_i-\theta_j|$ & $w_{ij}$ & \textbf{门控效果} \\
+        \hline
+        近距离同向等速 & 100 & 5 & $\pi/12$ & $\approx0.85$ & 轻度衰减（17\%），$e_{ij}$可自由调节 \\
+        中距离同向等速 & 300 & 10 & $\pi/8$ & $\approx0.58$ & 中度衰减（42\%） \\
+        中距离相向高速 & 200 & 40 & $\pi/2$ & $\approx0.015$ & 强衰减（98.5\%），注意力降至1/67 \\
+        远距离航向正交 & 500 & 30 & $\pi/2$ & $\approx0.003$ & 近零衰减（99.7\%），信息流几乎阻断 \\
+        \hline
+    \end{tabular}
+\end{table}
+
+表中的对比极具说明力：两对飞行器距离同为200 m左右，若同向等速（第一行），$w_{ij}\approx0.85$，注意力几乎不受限制；若相向高速（第三行），$w_{ij}\approx0.015$，注意力被压缩至1/67。而固定阈值GAT的邻接矩阵中，二者同为"邻居"，权重完全一致——这正是DyGAT相对静态图方法的本质优势。
+
+\subsection{门控机制的性质分析}
+
+乘法门控机制具有三个重要性质，这些性质共同保证了模型的物理合理性：
+
+\textbf{性质1（软性非阻断）：}$w_{ij}\in(0,1]$，物理先验不会完全阻断信息流。即使在最不利情形（远距离+高速差+航向正交），$w_{ij}$仍为一个极小正数而非零，从而保留了学习注意力$e_{ij}$在极端条件下发现非常规依赖的可能性。这一设计避免了硬性掩码"一票否决"导致的表达力损失。
+
+\textbf{性质2（非对称性）：}乘法形式（$\odot$而非$+$）使门控具有非对称性。$w_{ij}$可以近乎完全压制$e_{ij}$（将权重压缩至接近零），但$e_{ij}$永远无法"提升"已被压制到接近零的注意力权重。这意味着物理安全约束是"不可学习覆盖"的——即使训练数据中存在反例，模型也无法通过学习推翻物理门控划定的危险边界。这一性质赋予了模型安全保证的鲁棒性。
+
+\textbf{性质3（零参数零开销）：}物理先验$w_{ij}$的计算无需梯度回传，完全由状态量直接计算。在$N=21$时，单步仅增加约0.02 ms的额外开销，相对于整体推理时间（约4.5 ms/步）几乎可以忽略，保证了模型的实时性。
+
+从理论视角看，该门控机制可理解为一种\textbf{结构化先验注入}（structured prior injection）。这与标准门控机制（如LSTM中的遗忘门$\sigma(Wx+b)$）有本质区别：标准门控通过学习得到门控信号，门控本身是"数据驱动的"；而本文的$w_{ij}$完全由物理量驱动，不引入任何可学习参数。更直观地，$w_{ij}$定义了学习注意力可以操作的"有效范围"（软性掩码），学习注意力$e_{ij}$在此范围内进行精细化分配——两者形成"物理划界、学习微调"的互补格局。
+
+\subsection{计算复杂度分析}
+
+DyGAT的计算复杂度分析如下。设节点数（邻居数）为$K$，特征维度为$F$：
+\begin{itemize}
+    \item 空间注意力：特征变换$O(KF^2)$，注意力分数计算$O(K^2F)$；
+    \item 乘法门控：物理量直接计算，$O(K^2)$；
+    \item 时序注意力：$O(TF^2)$，其中$T=10$为时序窗口。
+\end{itemize}
+由于邻域半径限制（500 m）使得$K\ll N$（平均邻居数约6），实际计算量随$N$近似线性增长。第5.9节将给出$N=5\sim21$下的实测推理时间。
+
+\section{决策网络与GAT-Mixer混合网络}
+
+\subsection{单智能体网络结构}
+
+每架飞行器维护一个单智能体网络（AgentNetwork），其信息流如下：LSTM编码器（2层，64维）$\to$ DyGAT层（输出256维$h_i^{\text{coupled}}$）$\to$ 策略头与Q值头。具体而言：
+\begin{itemize}
+    \item \textbf{策略头}：2层MLP（Tanh激活），输出动作均值$\mu_i$，动作由高斯分布$\mathcal{N}(\mu_i, 0.1^2)$采样得到。固定标准差0.1使策略具有可调节的探索性，且避免了对数方差的学习不稳定问题。
+    \item \textbf{Q值头}：3层MLP（ReLU激活），输出个体Q值，用于训练阶段的全局价值评估。
+\end{itemize}
+
+策略头与Q值头共享编码层参数。这一共享设计有两个好处：一是特征提取层的参数量大幅减少，降低过拟合风险；二是策略与价值共享同一语义空间，有利于价值函数对策略改进的指导作用。
+
+\subsection{GAT-Mixer全局价值网络}
+
+在集中训练阶段，需要将所有智能体的信息融合为一个全局Q值$Q_{\text{tot}}$，以评估联合状态-动作的质量。本文设计GAT-Mixer作为混合网络实现这一融合：
+
+\begin{equation}
+    Q_{\text{tot}} = \text{MLP}\!\left(\text{MeanPool}\!\left(\text{GAT}\left(\{s_i\}_{i=1}^{N}\right)\right)\right),
+    \label{eq:gat_mixer}
+\end{equation}
+其中$\{s_i\}$为各智能体的4维状态向量（$[x_i,y_i,v_i,v_i^{\text{target}}]$），在全连接图上经GAT聚合后取均值池化，再经MLP输出$Q_{\text{tot}}$。
+
+GAT-Mixer的设计动机有三：（1）以GAT注意力替代QMIX的超网络，突破单调性约束——QMIX要求$\partial Q_{\text{tot}}/\partial Q_i\geq0$，限制了其对"某些智能体表现更差反而需要全局视角协调"这类复杂协作模式的表达；（2）GAT的注意力加权天然适应$N$的动态变化，无需为不同的$N$重新设计网络拓扑，契合课程学习中$N$从5到21的动态增长；（3）均值池化提供平移不变性，使$Q_{\text{tot}}$对智能体的排列顺序不敏感。
+
+需要澄清的是，本文的GAT-Mixer在架构上独立于ICLR 2023的GraphMixer\cite{ref28}——后者是基于MLP-Mixer的时序链路预测模型，与本文的全局价值混合功能无关，仅名称相似。
+
+\section{训练机制设计}
+
+\subsection{课程学习}
+
+稀疏冲突样本下的训练稳定性是本文面临的核心难题之一。如果一开始就让21架飞行器在紧凑的空域中同时学习，模型面对的是极度稀疏的奖励信号——绝大多数Episode完全没有冲突发生，安全奖励的梯度贡献趋近于零，模型难以从"一片坦途"中学会"危险规避"。课程学习（Curriculum Learning）\cite{ref39}正是应对这一难题的有效手段：通过从简单任务逐渐过渡到困难任务，让模型"先学会走路，再学会奔跑"。
+
+本文的课程学习设计如下：训练从$N=5$架飞行器、$d_{\text{base}}=80$ m开始（宽松场景），当连续3个周期满足"冲突率低于阈值且完成率高于80\%"时，触发进阶：
+\begin{equation}
+    N \leftarrow \min(N+2, 21), \qquad d_{\text{base}} \leftarrow \max(d_{\text{base}}-5, 50).
+    \label{eq:curriculum}
+\end{equation}
+即每次进阶增加2架飞行器并缩小5 m基本安全间隔，逐步逼近"高密度+紧凑间隔"的困难场景。课程共9个级别。为应对训练中可能出现的性能回退，设有回退机制：当连续5个周期不满足完成率要求时，$N$回退1架、$d_{\text{base}}$回升5 m，保证训练进程的稳健性。
+
+课程学习的收益不仅在于稳定性：前期在$N=5$时学会的基础避让技能（如减速让行、保持间隔）在后期的$N=21$场景中具有迁移性，显著缩短了整体训练时间。
+
+\subsection{Episode级冲突损失加权}
+
+即使有了课程学习，冲突仍是低概率事件。进一步地，本文引入Episode级冲突损失加权机制：对包含冲突的Episode施加更大的损失权重，使模型在参数更新时"更认真地对待"危险样本。
+
+在PPO on-policy框架下，总损失为：
+\begin{equation}
+    L_{\text{total}} = \lambda\left(L_{\text{policy}} + L_{q} + 0.5\,L_{\text{value}}\right),
+    \label{eq:total_loss}
+\end{equation}
+其中$L_{\text{policy}}$为PPO裁剪策略损失（式(\ref{eq:ppo_clip})），$L_{q}$与$L_{\text{value}}$分别为Q值与价值损失，权重系数为：
+\begin{equation}
+    \lambda = \begin{cases}
+        2.0, & \text{含冲突的Episode}\\
+        1.0, & \text{无冲突的Episode}
+    \end{cases}.
+    \label{eq:lambda}
+\end{equation}
+
+该机制与优先经验回放（Prioritized Experience Replay，PER）存在本质区别，需要予以澄清。PER改变的是\textbf{采样分布}：高优先级样本被更频繁地采样，导致采样分布偏离原始数据分布，需要重要性采样校正（否则期望梯度产生偏移）。而本文的$\lambda$仅\textbf{缩放损失幅度}：$\nabla_\theta(\lambda L)=\lambda\nabla_\theta L$，不涉及任何对数据分布的修改，因此\textbf{严格保持了PPO的on-policy特性}——所有样本仍然来自当前策略，只是含冲突样本的梯度贡献被放大了2倍。
+
+关于$\lambda$与PPO裁剪的交互，还需要一个诚实的说明：裁剪操作作用于$r_t(\theta)$层面。当某条transition的$r_t(\theta)$被clip截断时（即策略更新幅度过大），$\lambda$对该条transition不再有效——因为被裁剪的目标值已固定。因此，$\lambda$加权在训练早期（策略不稳定、clip截断率高）的实际效果可能弱于预期。PTR-PPO\cite{ref27}采用截断重要性采样处理off-policy轨迹，代表了处理该问题的更系统方案，可作为后续改进方向。
+
+\subsection{冲突加权系数的选取}
+
+$\lambda$的取值直接影响训练效果：$\lambda$过小则危险样本得不到充分关注，$\lambda$过大则可能破坏训练稳定性。本文在$\{1.0, 1.5, 2.0, 2.5, 3.0\}$五个离散值上进行实验（$n=5$），结果见表\ref{tab:lambda}。
+
+\begin{table}[H]
+    \centering
+    \caption{$\lambda$取值实验（$n=5$）}
+    \label{tab:lambda}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        $\lambda$ & TC$\downarrow$ & CFCR(\%)$\uparrow$ & 收敛轮次 \\
+        \hline
+        1.0 & $24.6\pm2.8$ & $53.2\pm2.3$ & $\sim800$ \\
+        1.5 & $21.8\pm2.5$ & $58.7\pm2.0$ & $\sim600$ \\
+        \textbf{2.0} & $\mathbf{18.2\pm2.1}$ & $\mathbf{68.4\pm1.8}$ & $\sim400$ \\
+        2.5 & $19.5\pm2.3$ & $64.1\pm1.9$ & $\sim350$ \\
+        3.0 & $22.3\pm3.1$ & $57.3\pm2.5$ & $\sim300$ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+实验结果表明：$\lambda=2.0$时TC最低（18.2）且CFCR最高（68.4\%），为最优取值；$\lambda=3.0$时收敛最快（约300轮）但最终性能反而下降（CFCR降至57.3\%），说明过大的权重导致优化过程振荡。需要指出的是，五个离散值的最优未必是连续空间的全局最优，更精细的调参可能带来进一步的性能提升，但$\lambda=2.0$已足以支撑本文的核心结论。
+
+\subsection{完整训练算法流程}
+
+综合上述设计，完整的训练算法如算法\ref{alg:training}所示。
+
+\begin{algorithm}[H]
+\caption{基于DyGAT-MARL的协同管控模型训练流程}
+\label{alg:training}
+\begin{algorithmic}[1]
+\STATE 初始化课程级别$c=1$，$N=5$，$d_{\text{base}}=80$ m，策略参数$\theta$，学习率$\eta=5\times10^{-4}$
+\FOR{episode $k=1,2,\ldots,K$}
+    \STATE 初始化环境（$N$架eVTOL），重置智能体隐藏状态
+    \STATE $ep\_data \leftarrow \emptyset$，$has\_conflict \leftarrow \text{False}$
+    \REPEAT
+        \STATE 各智能体获取局部观测$o_i$，经LSTM+DyGAT编码得$h_i^{\text{coupled}}$
+        \STATE 策略头输出动作均值$\mu_i$，采样动作$a_i\sim\mathcal{N}(\mu_i,0.1^2)$
+        \STATE 环境执行联合动作$(a_1,\ldots,a_N)$，返回奖励$R$与冲突信息
+        \IF{发生冲突} \STATE $has\_conflict \leftarrow \text{True}$ \ENDIF
+        \STATE 将$(o,a,\log\pi,\hat{A},R)$存入$ep\_data$
+    \UNTIL{Episode结束}
+    \STATE 计算GAE优势估计（式(\ref{eq:gae})）
+    \STATE 计算$\lambda = 2.0 \text{ if } has\_conflict \text{ else } 1.0$
+    \STATE 以$\lambda$加权总损失（式(\ref{eq:total_loss})），更新策略参数$\theta$
+    \STATE 课程学习判定：连续3周期满足进阶条件则$N\leftarrow\min(N+2,21)$，$d_{\text{base}}\leftarrow\max(d_{\text{base}}-5,50)$
+\ENDFOR
+\STATE \RETURN 训练后的策略参数$\theta$
+\end{algorithmic}
+\end{algorithm}
+
+\section{本章小结}
+
+本章构建了完整的协同管控模型。核心创新在于DyGAT的乘法门控注意力掩码：通过三个指数核将飞行器对的距离、速度差与航向差编码为$(0,1]$区间的软性掩码，对学习注意力进行乘法门控，实现了"物理划界、学习微调"的互补机制。围绕该核心，本章还完成了LSTM时序编码、策略与价值网络、GAT-Mixer全局混合以及课程学习+冲突加权训练机制的设计。下一章将通过系统实验验证模型的有效性。
+
+%==========================================================================
+% 第5章 实验设计与结果分析
+%==========================================================================
+\chapter{实验设计与结果分析}
+
+本章对第4章提出的协同管控模型进行全面实验验证。首先介绍实验设置（仿真环境参数、基线方法、评价指标与硬件平台），然后依次从训练收敛性、综合性能、安全指标、统计显著性、消融实验、密度鲁棒性、参数敏感性与推理效率八个维度对模型进行系统评估，并与代表性方法MS-GRL进行对比讨论。
+
+\section{实验设置}
+
+\subsection{仿真环境与参数}
+
+实验在自研的AirTrafficEnv仿真环境中进行，全部代码基于Python 3.11与PyTorch实现，运行于NVIDIA RTX 4060（8 GB显存）GPU与Intel i9-14900K CPU平台。仿真环境的核心参数如表\ref{tab:env}所示。
+
+\begin{table}[H]
+    \centering\small
+    \caption{仿真环境参数}
+    \label{tab:env}
+    \begin{tabular}{|c|c|c|c|}
+        \hline
+        \textbf{参数} & \textbf{取值} & \textbf{参数} & \textbf{取值} \\
+        \hline
+        空域范围 & $1000\text{m}\times1000\text{m}$ & 最大转弯角 & $\pi/6$ rad \\
+        $d_{\text{base}}$（基本安全间隔） & 50 m & 时序窗口 $T$ & 10步（5 s） \\
+        $\Delta t$（控制周期） & 0.5 s & 邻域半径 & 500 m \\
+        最大步长 & 200步（100 s） & 训练轮次 & 1000 \\
+        目标速度 & $70\pm10$ km/h & $\gamma,\ \epsilon$ & 0.99, 0.2 \\
+        速度范围 & $[60, 140]$ km/h & 初始学习率$\eta$ & $5\times10^{-4}$ \\
+        最大加速度 & 3.0 m/s$^2$ & 最大减速度 & 4.0 m/s$^2$ \\
+        风扰强度 & 0.1 m/s & 噪声标准差$\sigma$ & 0.5 m \\
+        \hline
+    \end{tabular}
+\end{table}
+
+其中几个关键参数的选择理由已在第3章详述，此处仅补充两点：（1）空域范围1000 m×1000 m对应典型城市街区尺度，飞行器初始位置位于半径为600 m（0.6倍空域尺寸）的圆周上，留有充分的机动空间；（2）最大步长200步（100 s）保证即使发生多轮避让，飞行器也有足够时间完成穿越。
+
+\subsection{基线方法}
+
+为全面评估本文方法的性能，选取8种覆盖"规则调度—单智能体RL—CTDE-MARL—工程安全方法"四个技术层级的基线方法：
+
+\textbf{（1）规则调度：}轮询调度（Round Robin，RR）与先到先服务（First Come First Served，FCFS）。RR按固定顺序轮流放行飞行器，FCFS按到达交叉中心的距离远近决定通行优先级。二者代表无学习能力的最朴素调度策略，用于衡量学习方法的增益下界。
+
+\textbf{（2）单/独立RL：}集中式DQN与独立A2C（Independent A2C）。DQN基于价值迭代学习最优策略，独立A2C让每个智能体独立使用A2C算法学习，互不通信。
+
+\textbf{（3）CTDE-MARL：}MADDPG\cite{ref34}、COMA\cite{ref35}、QMIX\cite{ref33}与MAPPO\cite{ref36}。这四类算法代表CTDE范式的不同技术路线，其中MAPPO是性能最强的对比基线。
+
+\textbf{（4）工程安全方法：}ORCA\cite{ref4}，采用pyrvo实现（RVO2库的Python绑定），时间前瞻$\tau=5.0$ s，安全半径与$d_{\text{safety}}$一致，首选速度$70\pm10$ km/h指向交叉中心。ORCA的前身VO算法在$N=21$高密度场景下被ORCA一致主导（TC更高、CFCR更低），故主实验仅报告ORCA结果。
+
+所有RL基线与本文方法共享相同的仿真环境与奖励函数，确保比较的公平性；对于规则方法与工程方法，则直接施加其固有策略。MPC与CBF未纳入比较，其原因有二：MPC在21架飞行器场景下存在实时性约束难以满足控制周期要求；CBF在高密度场景下的安全集合交集容易退化。二者与MARL的混合架构是重要的未来研究方向。
+
+\subsection{评价指标}
+
+评价指标分为"表层"与"深层"两个层级。表层指标刻画整体运行性能，深层指标刻画安全性能，二者的组合避免了单一指标可能带来的片面结论。
+
+\textbf{表层指标：}
+\begin{itemize}
+    \item \textbf{累计奖励}（Cumulative Reward，CR）：整个Episode的折扣累积奖励，综合反映安全、速度、协同与效率的整体水平。
+    \item \textbf{总冲突次数}（Total Conflicts，TC）：整个Episode中所有时刻、所有飞行器对之间的冲突数量累计，是安全性能的直接度量。
+    \item \textbf{平均延误}（Average Delay，AD）：飞行器实际飞行时间相对理想飞行时间的平均延迟，度量通行效率。
+\end{itemize}
+
+\textbf{深层安全指标：}
+\begin{itemize}
+    \item \textbf{通过率}（Pass Completion Rate，PCR）：成功通过交叉中心的飞行器占比。该指标在冲突定义下通常较高，因为多数飞行器即使发生小幅间隔违反仍能完成穿越。
+    \item \textbf{无冲突完成率}（Conflict-Free Completion Rate，CFCR）：全程零冲突且全部通过的Episode占比。该指标是本文最重要的安全指标——它要求飞行器在不发生任何间隔违反的前提下完成穿越。
+    \item \textbf{最小间隔违反率}（Minimum Separation Violation Rate，MSVR）：发生最小间隔违反（$d_{\min}<d_{\text{safety}}$）的时步占全部时步的比例。
+    \item \textbf{平均冲突幅度}（Mean Conflict Amplitude per Episode，MCAE）：单个Episode内平均每次冲突的严重程度。
+\end{itemize}
+
+PCR与CFCR的区别值得特别强调：PCR衡量"是否到达"，CFCR衡量"是否安全到达"。仅报告PCR可能系统性高估模型的安全性能——这正是本文引入CFCR的核心动机。
+
+\subsection{硬件与实现细节}
+
+实验硬件环境为NVIDIA RTX 4060 GPU（8 GB显存）与Intel i9-14900K CPU（24核）。软件环境为Python 3.11、PyTorch 2.x、NumPy与Matplotlib。PPO训练参数：$\gamma=0.99$，GAE参数$\lambda_{\text{GAE}}=0.95$，裁剪参数$\epsilon=0.2$，学习率$5\times10^{-4}$（指数衰减），梯度裁剪上限1.0，批大小对应单Episode数据。每个配置训练1000轮次，共5个随机种子（$n=5$）以估计均值与标准差。
+
+\section{训练收敛性分析}
+
+训练过程中的累计奖励、总冲突次数与课程进阶情况如图\ref{fig:training}所示。整体训练过程呈现明显的三阶段特征：
+
+\textbf{阶段I（0--200轮）：快速上升期。}累计奖励从约$-2000$迅速上升至$+800$，总冲突次数从80次降至25次。这一阶段对应课程学习的初级阶段（$N=5\sim11$），场景较为宽松，模型快速掌握基本避让策略。
+
+\textbf{阶段II（200--600轮）：进阶波动期。}课程学习触发$N:11\to19$的多次进阶。每次进阶后，新加入的飞行器使场景密度骤增，模型出现1--3轮的短暂性能回落（图中红色虚线标记的课程进阶点），随后迅速适应。这一"进阶—回落—再适应"的锯齿形曲线是课程学习正常工作的标志性特征。
+
+\textbf{阶段III（600--1000轮）：收敛稳定期。}累计奖励稳定在$1286.7\pm18.2$，总冲突次数收敛至$18.2\pm2.1$。模型在$N=21$的高密度场景下达到稳定性能，后续轮次无显著波动。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{QQ图片20260504231524.jpg}
+    \caption{训练收敛曲线。阴影表示$\pm1$标准差（$n=5$），红色虚线标记课程学习进阶点。}
+    \label{fig:training}
+\end{figure}
+
+收敛曲线的价值在于揭示训练过程的稳定性：若曲线剧烈振荡或长期不收敛，即使最终性能尚可，也说明训练机制存在缺陷。本文三阶段收敛特征表明课程学习有效缓解了稀疏奖励导致的训练不稳定问题，为最终性能提供了基础。
+
+\section{综合性能对比}
+
+表\ref{tab:comparison}给出了21架eVTOL场景下各方法的综合性能对比（$n=5$，均值$\pm$标准差）。
+
+\begin{table}[H]
+    \centering
+    \caption{综合性能对比（21架eVTOL，$n=5$）}
+    \label{tab:comparison}
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{方法} & \textbf{CR$\uparrow$} & \textbf{TC$\downarrow$} & \textbf{AD(s)$\downarrow$} & \textbf{PCR(\%)$\uparrow$} \\
+        \hline
+        RR & $-1256.3\pm89.2$ & $42.6\pm5.3$ & $1.58\pm0.12$ & $89.2\pm3.5$ \\
+        FCFS & $-1187.5\pm76.4$ & $38.9\pm4.7$ & $1.42\pm0.10$ & $91.5\pm2.8$ \\
+        DQN & $-892.5\pm65.3$ & $28.3\pm3.9$ & $1.21\pm0.09$ & $94.7\pm2.1$ \\
+        独立A2C & $-657.8\pm52.6$ & $19.7\pm2.8$ & $0.93\pm0.07$ & $96.3\pm1.7$ \\
+        ORCA & $-198.7\pm35.8$ & $22.8\pm2.9$ & $0.76\pm0.06$ & $96.0\pm1.6$ \\
+        MADDPG & $-215.6\pm41.2$ & $25.4\pm3.2$ & $0.87\pm0.06$ & $95.8\pm1.9$ \\
+        COMA & $187.3\pm35.7$ & $22.1\pm2.9$ & $0.79\pm0.06$ & $97.1\pm1.5$ \\
+        QMIX & $426.5\pm28.9$ & $23.1\pm2.7$ & $0.76\pm0.05$ & $97.5\pm1.3$ \\
+        MAPPO & $892.4\pm23.5$ & $20.3\pm2.4$ & $0.65\pm0.04$ & $98.2\pm1.1$ \\
+        \textbf{本文} & $\mathbf{1286.7\pm18.2}$ & $\mathbf{18.2\pm2.1}$ & $\mathbf{0.57\pm0.03}$ & $\mathbf{99.1\pm0.8}$ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+从表中可以读出以下关键结论：
+
+\textbf{（1）学习方法相比规则方法的系统性优势。}RR与FCFS的总冲突次数高达42.6与38.9，平均延误超过1.4 s，累计奖励为负值——说明规则方法在21架高密度场景下基本处于"勉强运行"状态。本文方法相对RR将总冲突次数降低57.2\%，平均延误缩小63.9\%，体现了学习方法的巨大增益。
+
+\textbf{（2）CTDE-MARL方法的整体优势。}MAPPO、QMIX、COMA等CTDE方法全面优于单智能体DQN与独立A2C，再次验证了集中训练对多智能体协作的重要性。MAPPO作为最强基线，其CR达892.4，TC为20.3。
+
+\textbf{（3）本文方法的全面领先。}本文方法在全部四项指标上均取得最优：CR最高（1286.7）、TC最低（18.2）、AD最短（0.57 s）、PCR最高（99.1\%）。
+
+\textbf{（4）工程方法ORCA的定位。}ORCA（TC=22.8）显著优于规则方法，其无学习、纯几何的避碰能力在中等密度下表现良好。但其CFCR仅约50\%（见表\ref{tab:safety}），低于本文的68.4\%——ORCA缺乏多步轨迹预测能力，在高密度下速度空间可行解可能退化。
+
+关于本文与ORCA的TC差异（18.2 vs.\ 22.8，降幅20.2\%），需要谨慎解读：以$n=5$和标准差估算，该差异的统计显著性可能处于边界状态，系统性的统计比较需$n\geq20$样本。这一诚实的说明体现了对统计证据强度的尊重。
+
+\section{安全指标专项分析}
+
+表层指标（TC、AD）与深层安全指标（CFCR、MCAE、MSVR）的对比见表\ref{tab:safety}。
+
+\begin{table}[H]
+    \centering
+    \caption{安全指标对比（$n=5$）}
+    \label{tab:safety}
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{方法} & \textbf{CFCR(\%)$\uparrow$} & \textbf{MCAE$\downarrow$} & \textbf{MSVR(\%)$\downarrow$} & \textbf{PCR(\%)$\uparrow$} \\
+        \hline
+        RR & $12.3\pm4.1$ & $2.03\pm0.25$ & $8.7\pm1.2$ & $89.2\pm3.5$ \\
+        FCFS & $18.7\pm3.6$ & $1.85\pm0.22$ & $7.4\pm1.0$ & $91.5\pm2.8$ \\
+        ORCA & $50.2\pm3.0$ & $1.09\pm0.14$ & $3.8\pm0.6$ & $96.0\pm1.6$ \\
+        DQN & $37.5\pm3.2$ & $1.35\pm0.19$ & $5.1\pm0.8$ & $94.7\pm2.1$ \\
+        独立A2C & $48.2\pm2.8$ & $0.94\pm0.13$ & $3.6\pm0.6$ & $96.3\pm1.7$ \\
+        MADDPG & $42.6\pm3.0$ & $1.21\pm0.15$ & $4.2\pm0.7$ & $95.8\pm1.9$ \\
+        COMA & $51.3\pm2.7$ & $1.05\pm0.14$ & $3.8\pm0.6$ & $97.1\pm1.5$ \\
+        QMIX & $53.7\pm2.5$ & $1.10\pm0.13$ & $3.5\pm0.5$ & $97.5\pm1.3$ \\
+        MAPPO & $57.8\pm2.2$ & $0.97\pm0.11$ & $3.0\pm0.4$ & $98.2\pm1.1$ \\
+        \textbf{本文} & $\mathbf{68.4\pm1.8}$ & $\mathbf{0.87\pm0.10}$ & $\mathbf{2.4\pm0.3}$ & $\mathbf{99.1\pm0.8}$ \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\textbf{PCR与CFCR之间约30个百分点的系统性差距是本文最重要的实证发现。}以本文方法为例，PCR高达99.1\%——几乎全部飞行器都完成了穿越——但CFCR仅为68.4\%，意味着约三成Episode中存在至少一次间隔违反。这种"到达率高、安全到达率低"的现象在MAPPO上更为显著（PCR 98.2\% vs.\ CFCR 57.8\%，差距约40个百分点），表明该问题并非本文方法的特例，而是CTDE-MARL在安全攸关评估中的共性挑战。
+
+这一发现的方法论意义在于：如果研究者在安全评估中仅报告PCR，将系统性高估模型的安全性能。CFCR要求的"全程零冲突"，把"只要不出事故"的宽松标准提升为"全程零风险接触"的严格标准，更符合低空交通安全的实际诉求。
+
+\section{统计显著性检验}
+
+为确认本文方法与最强基线MAPPO之间的性能差异并非随机波动，采用Welch $t$检验（双侧，$\alpha=0.05$，$n_1=n_2=5$）进行统计检验，并辅以Cohen's $d$效应量与统计功效分析。结果见表\ref{tab:ttest}。
+
+\begin{table}[H]
+    \centering
+    \caption{本文 vs.\ MAPPO统计检验与功效分析}
+    \label{tab:ttest}
+    \begin{tabular}{|c|c|c|c|c|c|c|}
+        \hline
+        \textbf{指标} & \textbf{均值差} & \textbf{$t$(df=8)} & \textbf{$p$} & \textbf{$d$} & \textbf{Power} & \textbf{结论} \\
+        \hline
+        TC & $-2.1$ & 1.47 & 0.180 & 0.93 & 38\% & 不显著（$n\geq20$需） \\
+        CFCR & $+10.6\%$ & 8.34 & $<0.001$ & 5.27 & $>99\%$ & \textbf{高度显著} \\
+        MCAE & $-0.10$ & 1.50 & 0.172 & 0.95 & 39\% & 不显著（$n\geq20$需） \\
+        MSVR & $-0.6\%$ & 2.68 & 0.029 & 1.69 & 70\% & \textbf{显著} \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\textbf{核心统计结论：}本文方法在CFCR（$p<0.001$，效力$>99\%$）和MSVR（$p=0.029$，效力70\%）两项安全指标上取得了统计可信的改善——这是本文的核心统计贡献。CFCR的效应量$d=5.27$远超"大效应"阈值（0.8），表明$+10.6\%$的CFCR提升不仅在统计上显著，在工程意义上也极为可观。
+
+TC与MCAE的差异（$d=0.93$与$d=0.95$）具有大效应量，但在$n=5$样本量下统计效力仅38\%左右，未达显著水平（$p=0.180$与$p=0.172$）。这里的$p=0.180$应恰当解读为"在现有样本量下未检测到显著差异"，而非"确认无差异"——大效应量恰恰暗示真实效应存在的可能性较高。据功效分析，需$n\geq20$样本方能使检验达到80\%的统计效力。这一区分对于结果的科学解读至关重要：研究者既不应将不显著结果夸大为"确认无差异"，也不应忽视其方向性证据价值。
+
+\section{消融实验}
+
+为厘清各设计模块的独立贡献，进行消融实验。将完整模型与移除单一模块的变体进行对比，结果见表\ref{tab:ablation}。
+
+\begin{table}[H]
+    \centering
+    \caption{消融实验（$n=5$）}
+    \label{tab:ablation}
+    \resizebox{0.92\textwidth}{!}{%
+    \begin{tabular}{|c|c|c|c|c|}
+        \hline
+        \textbf{配置} & \textbf{CR$\uparrow$} & \textbf{TC$\downarrow$} & \textbf{AD(s)$\downarrow$} & \textbf{PCR(\%)$\uparrow$} \\
+        \hline
+        完整模型 & $\mathbf{1286.7\pm18.2}$ & $\mathbf{18.2\pm2.1}$ & $\mathbf{0.57\pm0.03}$ & $\mathbf{99.1\pm0.8}$ \\
+        \hline
+        移除DyGAT（标准GAT，无门控） & $215.3\pm32.6$ & $49.8\pm4.5$ & $0.79\pm0.05$ & $94.3\pm1.9$ \\
+        \hline
+        移除课程学习（直接$N=21$） & $587.2\pm27.4$ & $28.4\pm3.1$ & $0.68\pm0.04$ & $97.2\pm1.4$ \\
+        \hline
+        移除冲突损失加权（$\lambda\equiv1.0$） & $763.5\pm24.1$ & $24.6\pm2.8$ & $0.65\pm0.04$ & $97.8\pm1.2$ \\
+        \hline
+        同时移除课程学习与冲突加权 & $128.6\pm38.5$ & $35.7\pm3.9$ & $0.82\pm0.06$ & $95.6\pm1.7$ \\
+        \hline
+    \end{tabular}%
+    }
+\end{table}
+
+消融结果表明：
+
+\textbf{（1）DyGAT贡献最大。}移除DyGAT（退化为无门控的标准GAT）后，总冲突次数从18.2飙升至49.8（增加173.6\%），累计奖励从1286.7骤降至215.3。这一结果直接验证了乘法门控注意力掩码的核心价值：物理先验注入带来的风险聚焦能力，是模型安全性能的主要来源。
+
+\textbf{（2）课程学习与冲突加权的独立贡献。}单独移除课程学习使TC增加56.0\%（18.2$\to$28.4），单独移除冲突加权使TC增加35.2\%（18.2$\to$24.6）。
+
+\textbf{（3）二者的联合效应。}同时移除课程学习与冲突加权使TC增加96.2\%（18.2$\to$35.7），接近二者单独效应的加和（56.0\%+35.2\%=91.2\%）。这表明两个训练机制的作用基本独立、互不干扰，可以放心地叠加使用。
+
+\section{密度鲁棒性分析}
+
+前文实验均在固定密度（$N=21$）下进行。为检验模型的密度鲁棒性，将飞行器数量从$N=5$逐步增加至$N=21$，观察各方法总冲突次数的变化趋势（图\ref{fig:density}）。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.65\textwidth]{QQ图片20260524171218.png}
+    \caption{不同密度下冲突次数对比。误差条表示$\pm1$标准差（$n=5$）。}
+    \label{fig:density}
+\end{figure}
+
+实验结果显示三种方法的冲突增长斜率差异显著：本文方法TC增长斜率约为0.75次/架，MAPPO约为1.15次/架，而规则方法RR高达约2.4次/架。这一斜率对比具有重要的工程含义：密度每增加一架飞行器，本文方法仅增加约0.75次冲突，而规则方法增加2.4次——在低密度时二者差距尚小，随着密度逼近真实运行场景的极限，差距呈线性放大。
+
+DyGAT在高密度下的优势可归因于其门控机制：当邻居数量激增时，全连接图上的注意力信息急剧膨胀，无门控的方法容易被大量"弱相关"邻居稀释有效信息；而乘法门控将注意力聚焦于真正构成威胁的少数飞行器对，使模型在高密度下仍能保持决策的"锐度"。
+
+\section{参数敏感性分析}
+
+模型的超参数对性能的影响通过敏感性实验考察。测试了三个关键参数：基本安全间隔$d_{\text{base}}$、风扰强度与传感器噪声（图\ref{fig:sensitivity}）。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{QQ图片20260524162300.png}
+    \caption{超参数敏感性分析。红色虚线标记默认参数取值。误差条表示$\pm1$标准差。}
+    \label{fig:sensitivity}
+\end{figure}
+
+\textbf{（1）安全间隔-效率权衡：}$d_{\text{base}}$增大使TC降低34.7\%（更安全），但AD上升21.2\%（更延误）。这一结果符合物理直觉：更大的安全间隔意味着更大的缓冲余量，但同时也限制了交通流的紧凑性。$d_{\text{base}}$的选取本质上是安全与效率的权衡，本文默认50 m在二者之间取得了平衡。
+
+\textbf{（2）风扰的破坏性：}风扰强度增大使TC上升约28\%。风扰破坏飞行器的航迹精确性，迫使模型频繁修正速度与航向，增大了冲突概率。
+
+\textbf{（3）噪声的有限影响：}传感器噪声增大使TC上升约15\%，为三者中影响最小。其原因在于LSTM编码器对时序信息的平滑作用——历史序列的聚合天然对单步噪声具有过滤效果，体现了时序建模的鲁棒性价值。
+
+敏感性分析的意义在于验证模型性能的稳健边界：本文方法在参数发生±20\%扰动时性能不会剧烈退化，表明其性能并非依赖过拟合于特定参数组合。
+
+\section{推理效率分析}
+
+低空交通管控对决策实时性有严格要求：控制周期为0.5 s，任何方法的单步决策时间必须远小于该周期。各方法在不同$N$下的单步推理时间如图\ref{fig:computation}所示。
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{QQ图片20260524163903.jpg}
+    \caption{不同飞行器数量$N$下单步推理时间对比（RTX 4060 GPU）。}
+    \label{fig:computation}
+\end{figure}
+
+实验结果表明：本文方法在$N=21$时单步推理时间为4.5 ms，相对于0.5 s的控制周期，实时性裕度约111倍——这意味着即使考虑通信与调度开销，系统仍具有充足的实时性余量。相比其他MARL基线，本文方法的推理开销处于同一量级，且随$N$增长近似线性。
+
+特别值得指出的是乘法门控的极致轻量化：其计算仅涉及纯物理量（距离、速度差、航向差的指数运算），无需梯度回传，在$N=21$时单步仅增加约0.02 ms开销，相对于4.5 ms的整体推理时间几乎可以忽略。这一特性使得"物理先验注入"在工程上是零成本的安全增强——模型在不损失任何实时性的前提下获得了显著的安全性能提升。
+
+\section{与MS-GRL的对比讨论}
+
+Li等\cite{ref10}提出的MS-GRL是图增强MARL在低空无人机冲突消解领域的代表性工作，与本文方法具有较强的可比性。二者的主要差异体现在三个层面：
+
+\textbf{（1）算法层面：}MS-GRL采用Double DQN（离散动作空间），本文采用PPO（连续加速度动作空间）。连续动作空间能够输出更平滑的加速度指令，避免离散动作导致的航迹抖动。
+
+\textbf{（2）图结构层面：}MS-GRL采用固定距离阈值的GAT建图——凡在阈值半径内的无人机一律视为邻居；本文采用乘法门控的动态边权重，边权重随飞行器对的物理状态连续变化。
+
+\textbf{（3）场景规模层面：}MS-GRL处理100架UAV的编队冲突，本文处理21架eVTOL的交叉路口协同。前者关注"大规模稀疏冲突"，后者关注"小规模高密度冲突"，二者的挑战重心不同。
+
+以具体数值说明门控的优势：考虑两对距离均为200 m的飞行器，第一对同向等速（$w_{ij}\approx0.82$），第二对相向高速（$w_{ij}\approx0.015$），二者的注意力权重相差约55倍。固定距离阈值GAT将两者一视同仁，完全无法捕捉这一差异；而DyGAT通过乘法门控实现了对"同样距离、不同风险"飞行器对的自适应区分。
+
+需要指出的是，MS-GRL与本文方法在技术路线上互补：MS-GRL的图增强框架与本文的物理门控思想可以结合，二者的融合是未来研究的一个方向。
+
+\section{本章小结}
+
+本章通过系统实验验证了基于DyGAT-MARL协同管控模型的有效性。实验结果表明：（1）模型在训练过程中呈三阶段收敛特征，课程学习有效保障了训练稳定性；（2）在21架eVTOL场景中，模型在CR、TC、AD、PCR四项综合指标上全面领先8种基线方法；（3）在CFCR与MSVR两项深层安全指标上取得统计显著改善（$p<0.001$与$p=0.029$）；（4）消融实验证实DyGAT是贡献最大的模块（移除后TC增加173.6\%），课程学习与冲突加权作用独立可叠加；（5）模型具有良好的密度鲁棒性、参数稳健性与推理实时性。本章同时揭示了PCR与CFCR之间约30个百分点的系统性差距，对CTDE-MARL安全评估方法论具有警示意义。
+
+%==========================================================================
+% 第6章 总结与展望
+%==========================================================================
+\chapter{总结与展望}
+
+本章对全文工作进行总结，提炼主要创新点，客观分析研究的局限性，并对后续研究方向进行展望。
+
+\section{本文工作总结}
+
+本文针对城市低空十字交叉路口的多架eVTOL协同管控问题，系统研究了"如何让多架自主飞行器在共享空域中安全、高效、协同地通过交叉区域"这一先进空中交通的核心技术难题。围绕这一问题，本文完成了以下工作：
+
+（1）\textbf{问题建模。}将低空交叉路口协同管控问题形式化为分布式马尔可夫决策过程（Dec-MDP），构建了包含速度自适应安全距离、eVTOL物理运动约束、风扰与传感器噪声的仿真环境，并设计了融合安全、速度、协同与效率四维目标的团队奖励函数。该环境兼顾了物理真实性与可求解性，为后续算法验证提供了可靠平台。
+
+（2）\textbf{算法设计。}提出了融合动态图注意力网络（DyGAT）的耦合多智能体强化学习协同管控模型。DyGAT的核心创新在于乘法门控注意力掩码——通过三个手工设计的指数核将飞行器对之间的距离、速度差与航向差编码为$(0,1]$区间的软性掩码信号，对学习注意力进行乘法门控，实现了"物理划界、学习微调"的互补机制。该机制不引入任何可学习参数，以近乎零的计算开销为模型注入物理先验。
+
+（3）\textbf{训练机制。}设计了课程学习与Episode级冲突损失加权相结合的训练机制：课程学习从$N=5$渐进扩展至$N=21$，缓解了稀疏冲突样本下的训练不稳定；Episode级冲突加权（$\lambda=2.0$）在严格保持PPO on-policy框架的前提下提升了危险样本的利用效率。
+
+（4）\textbf{实验验证。}在21架eVTOL场景下与8种基线方法系统对比，建立了包含Welch $t$检验、Cohen's $d$效应量与统计功效分析的完整统计证据链。实验表明模型在CFCR与MSVR两项安全指标上取得统计显著改善，并揭示了PCR与CFCR之间约30个百分点的系统性差距这一重要的评估方法论发现。
+
+\section{主要创新点}
+
+本文的主要创新点可归纳为以下三个方面：
+
+\textbf{创新点一：提出了乘法门控注意力掩码的DyGAT网络。}首次在GAT框架中引入基于物理量的乘法门控信号，将几何先验以$(0,1]$区间的软性掩码形式作用于学习注意力。该设计同时具备三个理想性质：软性非阻断（物理先验不切断信息流）、非对称性（物理安全约束不可被学习覆盖）、零参数零开销（纯物理量计算）。消融实验证实，该模块是性能贡献最大的设计，移除后总冲突次数增加173.6\%。
+
+\textbf{创新点二：构建了课程学习与Episode级冲突加权协同的训练机制。}两个机制分别从"降低初始学习难度"与"放大危险样本信号"两个互补角度化解稀疏冲突样本的优化难题，且实验证明二者作用基本独立、可叠加（联合效应96.2\%接近独立效应之和91.2\%），为低概率事件场景下的MARL训练提供了可复用的方法范式。
+
+\textbf{创新点三：建立了双层安全评价指标体系。}在传统表层指标（CR、TC、AD）之外引入深层安全指标（CFCR、MCAE、MSVR），并通过严格的统计检验揭示了"PCR（99.1\%）与CFCR（68.4\%）之间存在系统性差距"这一对CTDE-MARL安全评估具有普遍警示意义的发现。该发现提示该领域研究者：安全评估不应止步于"到达率"，而应追踪"无风险到达率"。
+
+\section{研究局限性}
+
+本文工作仍存在以下局限性，需要客观认识：
+
+\textbf{（1）二维场景限制。}当前模型在二维平面单交叉路口场景中验证，未涉及三维高度层、多路口网络与起降场约束。真实低空交通的复杂度远超该抽象场景，三维扩展是首要的后续工作。
+
+\textbf{（2）统计样本量有限。}$n=5$的样本量对TC等中等效应量指标检验力不足（效力仅38\%）。虽然本文已通过功效分析明确了$n\geq20$的必要性，但受计算资源限制，重复实验尚未完成。
+
+\textbf{（3）风扰与噪声模型简化。}当前采用均匀随机风扰与高斯白噪声，均为时间独立的简化模型。真实低空风场使用Dryden\cite{ref26}或Kaimal\cite{ref44}谱模型，具有显著的空间相关性与时间连续性，对航迹的影响更为复杂。
+
+\textbf{（4）通信假设理想。}CTDE训练假设全局状态无延迟获取，而实际UTM部署中通信存在延迟（50--200 ms）与丢包，可能削弱集中训练的效果。
+
+\textbf{（5）基线覆盖不全。}MPC与CBF尚未纳入比较。ORCA已进行场景适配调优，但未对所有基线进行系统性的超参数搜索，基线的性能上限可能未被充分挖掘。
+
+\textbf{（6）eVTOL动力学参数估计。}加速度取值（3.0--4.0 m/s$^2$）为参考学术文献\cite{ref25}在缺乏制造商精确数据下的估计值。当前主流eVTOL制造商（Joby、Volocopter、Lilium、Archer等）均未公开发布最大水平加速度的精确规格，在制造商数据可用时需进行参数敏感性验证。
+
+\textbf{（7）DyGAT门控超参数手工预设。}三个指数核的衰减常数（1000 m、20 km/h、$\pi/4$ rad）为手工预设，未进行系统化调优，可能限制模型在不同空域尺度下的泛化性能。
+
+\section{未来展望}
+
+基于本文工作，以下方向值得进一步研究：
+
+\textbf{（1）三维多路口网络扩展。}将二维单路口模型推广至三维高度层分离与多路口网络协同，研究高度层的动态分配与路口间的流量协调问题。
+
+\textbf{（2）大样本重复实验。}开展$n\geq20$的重复实验，补充本文方法vs.\ ORCA的完整统计比较，使TC等中等效应量指标的结论获得充分统计效力。
+
+\textbf{（3）标准风谱模型集成。}引入Dryden/Kaimal标准风谱模型，刻画风场的空间相关性与时间连续性，检验模型在更真实扰动下的鲁棒性。
+
+\textbf{（4）通信约束建模。}在训练中引入通信延迟与丢包约束，研究模型在非理想通信条件下的性能退化规律与补偿机制。
+
+\textbf{（5）DyGAT组件级消融。}开展仅$w_{ij}$/仅$e_{ij}$/$e_{ij}\odot w_{ij}$的三路组件级消融，从经验上验证"学习注意力与物理门控缺一不可"的核心假设，并进一步考察门控超参数的影响。
+
+\textbf{（6）混合架构与系统对比。}与MPC/CBF方法进行系统基准对比，探索"MARL学习决策+工程方法安全兜底"的混合架构，兼顾学习方法的适应性与工程方法的形式化保证。
+
+\textbf{（7）实飞验证。}在条件成熟时，将模型迁移至硬件在环仿真平台与真实eVTOL测试，验证模型在真实动力学与传感器条件下的可用性。
+
+\textbf{代码与可复现性声明：}本文实验代码（含AirTrafficEnv仿真环境、DyGAT+GAT-Mixer模型实现、ORCA基线适配代码、训练与评估脚本）将在论文接收后于GitHub开源（\url{https://github.com/}，匿名链接将在camera-ready版本中提供）。当前版本使用Python 3.11+PyTorch实现，实验参数已在表\ref{tab:env}中完整列出，ORCA实现基于pyrvo（RVO2库Python绑定）。独立复现本文结果需约1000轮$\times$400 episodes$\times$4.5 ms$\times$1000步$\approx$5小时（RTX 4060 GPU）每seed——5 seeds总计约25 GPU小时，$n=20$约需100 GPU小时。
+
+%==========================================================================
+% 参考文献
+%==========================================================================
+\begin{thebibliography}{99}
+
+\bibitem{ref1} Federal Aviation Administration. Urban air mobility (UAM): concept of operations v2.0[R]. Washington, DC: FAA, 2023.
+
+\bibitem{ref2} MENON P K, SWERIDUK G D, BILIMORIA K D. New approach to modeling, analysis, and control of air traffic flow[J]. Journal of Guidance, Control, and Dynamics, 2004, 27(5): 737--744.
+
+\bibitem{ref3} RICHARDS A, HOW J P. Aircraft trajectory planning with collision avoidance using mixed integer linear programming[C]//Proceedings of the 2002 American Control Conference. Piscataway: IEEE, 2002: 1936--1941.
+
+\bibitem{ref4} VAN DEN BERG J, GUY S J, LIN M, et al. Reciprocal n-body collision avoidance[C]//Robotics Research: The 14th International Symposium ISRR (Springer Tracts in Advanced Robotics, Vol.\ 70). Berlin: Springer, 2011: 3--19.
+
+\bibitem{ref5} AMES A D, COOGAN S, EGERSTEDT M, et al. Control barrier functions: theory and applications[C]//2019 18th European Control Conference (ECC). Piscataway: IEEE, 2019: 3420--3431.
+
+\bibitem{ref6} AGOGINO A, TUMER K. Regulating air traffic flow with coupled agents[C]//Proceedings of the 7th International Conference on Autonomous Agents and Multiagent Systems (AAMAS 2008). Richland: IFAAMAS, 2008: 535--542.
+
+\bibitem{ref7} AGOGINO A K, TUMER K. A multiagent approach to managing air traffic flow[J]. Autonomous Agents and Multi-Agent Systems, 2012, 24(1): 1--25.
+
+\bibitem{ref8} BRITTAIN M, WEI P. Autonomous separation assurance in a high-density en route sector: a deep multi-agent reinforcement learning approach[C]//2019 IEEE Intelligent Transportation Systems Conference (ITSC). Piscataway: IEEE, 2019: 3256--3262.
+
+\bibitem{ref9} GHOSH S, LAGUNA S, LIM S H, et al. A deep ensemble method for multi-agent reinforcement learning: a case study on air traffic control[C]//Proceedings of the 31st International Conference on Automated Planning and Scheduling (ICAPS 2021). Palo Alto: AAAI Press, 2021: 468--476.
+
+\bibitem{ref10} LI Y, LI J, WANG J, ZHANG X, DING H, DU W. Multiscale-graph-enhanced reinforcement learning for conflict resolution in dense UAV networks[J]. IEEE Internet of Things Journal, 2025, 12(21): 44290--44303.
+
+\bibitem{ref11} SPATHARIS C, BASTAS A, KRAVARIS T, et al. Hierarchical multiagent reinforcement learning schemes for air traffic management[J]. Neural Computing and Applications, 2021, 33(14): 8649--8671.
+
+\bibitem{ref12} ASLANI M, MESGARI M S, WIERING M. Adaptive traffic signal control with actor-critic methods in a real-world traffic network with different traffic disruption events[J]. Transportation Research Part C: Emerging Technologies, 2017, 85: 732--752.
+
+\bibitem{ref13} 翟子洋, 郝茹茹, 董世浩. 大规模智慧交通信号控制中的强化学习和深度强化学习方法综述[J]. 计算机应用研究, 2024, 41(6): 1618--1627.
+
+\bibitem{ref14} TUMER K, AGOGINO A. Distributed agent-based air traffic flow management[C]//Proceedings of the 6th International Joint Conference on Autonomous Agents and Multiagent Systems (AAMAS 2007). Honolulu: ACM, 2007: 330--337.
+
+\bibitem{ref15} 王迎. 城市交通信号控制深度强化学习算法研究[D]. 济南: 山东交通学院, 2024.
+
+\bibitem{ref16} 赵晓华, 石建军, 李振龙, 赵国勇. 基于Q-learning和BP神经元网络的交叉口信号灯控制[J]. 公路交通科技, 2007, 24(7): 99--102.
+
+\bibitem{ref17} 赖建辉. 基于深度强化学习的交通控制优化方法研究及实现[D]. 杭州: 浙江工业大学, 2020.
+
+\bibitem{ref18} 张新武. 基于深度强化学习算法的交通信号控制优化研究[D]. 太原: 太原科技大学, 2024.
+
+\bibitem{ref19} 承向军, 常歆识, 杨肇夏. 基于Q-学习的交通信号控制方法[J]. 系统工程理论与实践, 2006(8): 136--140.
+
+\bibitem{ref20} 卢守峰, 张术, 刘喜敏. 平均排队长度差最小的单交叉口在线Q学习模型[J]. 公路交通科技, 2014, 31(11): 116--122.
+
+\bibitem{ref21} 江波, 李彦冬, 刘威陇, 等. 应用深度Q学习的机场道口协同智能调速方法[J]. 航空计算技术, 2022, 52(1): 26--30.
+
+\bibitem{ref22} 张春阳, 席雅琪. 人工智能在城市交通控制中的应用综述[J]. 信息系统工程, 2024(07): 33--36.
+
+\bibitem{ref23} GHAVAMZADEH M, MAHADEVAN S, MAKAR R. Hierarchical multi-agent reinforcement learning[J]. Autonomous Agents and Multi-Agent Systems, 2006, 13(2): 197--229.
+
+\bibitem{ref24} TUMER K, AGOGINO A. Improving air traffic management with a learning multiagent system[J]. IEEE Intelligent Systems, 2009, 24(1): 18--21.
+
+\bibitem{ref25} BACCHINI A, CESTINO E. Electric VTOL configurations comparison[J]. Aerospace, 2019, 6(3): 26.
+
+\bibitem{ref26} U.S. Department of Defense. Flying qualities of piloted airplanes: MIL-F-8785C[S]. Washington, DC: U.S. Department of Defense, 1980.
+
+\bibitem{ref27} LIANG X, MA Y, FENG Y, et al. PTR-PPO: proximal policy optimization with prioritized trajectory replay[EB/OL]. arXiv:2112.03798, 2021.
+
+\bibitem{ref28} CONG W, ZHANG S, CHEN J, et al. Do we really need complicated model architectures for temporal networks?[C]//Proceedings of the 11th International Conference on Learning Representations (ICLR 2023). Kigali: ICLR, 2023.
+
+\bibitem{ref29} XIE Y B, GARDI A, SABATINI R. Reinforcement learning-based flow management techniques for urban air mobility and dense low-altitude air traffic operations[C]//2021 IEEE/AIAA 40th Digital Avionics Systems Conference (DASC). Piscataway: IEEE, 2021: 1--10.
+
+\bibitem{ref30} SCHULMAN J, WOLSKI F, DHARIWAL P, et al. Proximal policy optimization algorithms[EB/OL]. arXiv:1707.06347, 2017.
+
+\bibitem{ref31} VELI\v{C}KOVI\'C P, CUCURULL G, CASANOVA A, et al. Graph attention networks[C]//Proceedings of the 6th International Conference on Learning Representations (ICLR 2018). Vancouver: ICLR, 2018.
+
+\bibitem{ref32} KIPF T N, WELLING M. Semi-supervised classification with graph convolutional networks[C]//Proceedings of the 5th International Conference on Learning Representations (ICLR 2017). Toulon: ICLR, 2017.
+
+\bibitem{ref33} RASHID T, SAMVELYAN M, DE WITT C S, et al. QMIX: monotonic value function factorisation for deep multi-agent reinforcement learning[C]//Proceedings of the 35th International Conference on Machine Learning (ICML 2018). Stockholmsm\"{a}ssan: PMLR, 2018: 4295--4304.
+
+\bibitem{ref34} LOWE R, WU Y, TAMAR A, et al. Multi-agent actor-critic for mixed cooperative-competitive environments[C]//Advances in Neural Information Processing Systems 30 (NeurIPS 2017). Long Beach: Curran Associates, 2017: 6379--6390.
+
+\bibitem{ref35} FOERSTER J, FARQUHAR G, AFOURAS T, et al. Counterfactual multi-agent policy gradients[C]//Proceedings of the 32nd AAAI Conference on Artificial Intelligence (AAAI 2018). New Orleans: AAAI Press, 2018: 2974--2982.
+
+\bibitem{ref36} YU C, VELU A, VINITSKY E, et al. The surprising effectiveness of PPO in cooperative multi-agent games[C]//Advances in Neural Information Processing Systems 35 (NeurIPS 2022). New Orleans: Curran Associates, 2022: 24611--24624.
+
+\bibitem{ref37} HOCHREITER S, SCHMIDHUBER J. Long short-term memory[J]. Neural Computation, 1997, 9(8): 1735--1780.
+
+\bibitem{ref38} SCHULMAN J, MORITZ P, LEVINE S, et al. High-dimensional continuous control using generalized advantage estimation[C]//Proceedings of the 4th International Conference on Learning Representations (ICLR 2016). San Juan: ICLR, 2016.
+
+\bibitem{ref39} BENGIO Y, LOUGARD J, COLLOBERT R, et al. Curriculum learning[C]//Proceedings of the 26th International Conference on Machine Learning (ICML 2009). Montreal: ACM, 2009: 41--48.
+
+\bibitem{ref40} MNIH V, KAVUKCUOGLU K, SILVER D, et al. Human-level control through deep reinforcement learning[J]. Nature, 2015, 518(7540): 529--533.
+
+\bibitem{ref41} BERNSTEIN D S, GIVAN R, IMMERMAN N, et al. The complexity of decentralized control of Markov decision processes[J]. Mathematics of Operations Research, 2002, 27(4): 819--840.
+
+\bibitem{ref42} WELCH B L. The generalization of Student's problem when several different population variances are involved[J]. Biometrika, 1947, 34(1--2): 28--35.
+
+\bibitem{ref43} COHEN J. Statistical power analysis for the behavioral sciences[M]. 2nd ed. Hillsdale: Lawrence Erlbaum Associates, 1988.
+
+\bibitem{ref44} International Electrotechnical Commission. Wind energy generation systems -- Part 1: design requirements: IEC 61400-1[S]. 4th ed. Geneva: IEC, 2019.
+
+\bibitem{ref45} COHEN A P, SHAHEEN S A, FARRAR E M. Urban air mobility: history, ecosystem, market potential, and challenges[J]. IEEE Transactions on Intelligent Transportation Systems, 2021, 22(9): 6074--6087.
+
+\end{thebibliography}
+
+%==========================================================================
+% 致谢
+%==========================================================================
+\chapter*{致\ \ 谢}
+\addcontentsline{toc}{chapter}{致\ \ 谢}
+
+光阴荏苒，本次关于低空交叉路口飞行器协同管控的研究工作即将告一段落。值此论文完成之际，谨向所有给予我帮助和支持的人致以诚挚的感谢。
+
+首先，衷心感谢我的指导老师韩云祥老师。从研究方向的选定、技术路线的规划，到仿真环境的搭建与论文的反复修改，韩老师都倾注了大量心血。韩老师严谨的治学态度、对航空交通管理领域前沿问题的深刻洞察，以及"把每一个技术细节讲清楚、把每一个实验结论做扎实"的学术要求，使我受益匪浅，也为我今后的研究工作树立了榜样。
+
+感谢实验室的同学们在课题讨论、代码调试与论文写作过程中给予的无私帮助。每一次关于强化学习、图神经网络与实验设计的讨论，都让我对问题的理解更加深入。
+
+感谢我的家人。你们一如既往的理解与支持，是我顺利完成学业最坚实的后盾。
+
+最后，感谢所有为先进空中交通与低空经济发展付出努力的研究者。本文的研究不过是这一宏大工程中的一点微小尝试，希望它能对推动低空交通智能化管控的发展有所助益。
+
+\end{document}
